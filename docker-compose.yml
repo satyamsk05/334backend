@@ -6,7 +6,7 @@ services:
     container_name: 334game-backend
     restart: always
     ports:
-      - "4000:4000"
+      - "4001:4000"
     env_file:
       - ../.env
     environment:
