@@ -45,6 +45,11 @@ export class SocketServer {
           return;
         }
 
+        const previousSocket = SocketServer.clients.get(userId);
+        if (previousSocket && previousSocket !== ws) {
+          previousSocket.close(1000, 'Replaced by a newer connection');
+        }
+
         ws.userId = userId;
         ws.isAlive = true;
         SocketServer.clients.set(userId, ws);
@@ -59,8 +64,7 @@ export class SocketServer {
       });
 
       ws.on('message', () => {
-        // Application messages must not be used to select another user's identity.
-        // Identity is taken exclusively from the verified JWT.
+        // Client identity is always taken from the verified JWT.
       });
 
       ws.on('close', () => {
@@ -93,6 +97,7 @@ export class SocketServer {
         SocketServer.heartbeatTimer = null;
       }
       SocketServer.clients.clear();
+      SocketServer.wss = null;
     });
 
     Logger.info('✅ WebSocket Server Initialized at /ws');
@@ -104,6 +109,10 @@ export class SocketServer {
       clearInterval(SocketServer.heartbeatTimer);
       SocketServer.heartbeatTimer = null;
     }
+
+    SocketServer.wss?.clients.forEach((client) => {
+      client.terminate();
+    });
     SocketServer.clients.clear();
 
     return new Promise((resolve) => {
