@@ -7,6 +7,7 @@ import { paymentRoutes } from './modules/payments/payment.routes';
 import { userRoutes } from './modules/users/user.routes';
 import { adminRouter } from './routes/admin';
 import { errorHandler } from './utils/errorHandler';
+import { ResponseHandler } from './utils/responseHandler';
 import { DatabaseConfig } from './config/db.config';
 import { createRateLimiter } from './middleware/rateLimit';
 
@@ -63,6 +64,8 @@ export function createApp() {
   app.use('/api/v1/users', userRoutes);
   app.use('/admin', adminRouter);
 
+  app.use('/api', (_req, res) => ResponseHandler.error(res, 'Route not found', 404));
+  app.use((_req, res) => ResponseHandler.error(res, 'Route not found', 404));
   app.use(errorHandler);
 
   return app;
