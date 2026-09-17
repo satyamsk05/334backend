@@ -1,0 +1,230 @@
+/* Ring of Future Figma 1:1 Styling System */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Outfit', sans-serif;
+  user-select: none;
+}
+
+body {
+  background: #2A2A2A;
+  color: #FFFFFF;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+}
+
+.game-container {
+  width: 100%;
+  max-width: 440px;
+  height: 100vh;
+  max-height: 920px;
+  background: #2F2F2F;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px;
+  position: relative;
+}
+
+/* Top Header */
+.top-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 48px;
+}
+
+.btn-back {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #FFFFFF;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.wallet-pill {
+  background: #10B981;
+  color: white;
+  padding: 6px 14px;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.wallet-pill span.plus {
+  font-size: 16px;
+  border-left: 1px solid rgba(255, 255, 255, 0.3);
+  padding-left: 8px;
+}
+
+/* Canvas Stage Area */
+.canvas-stage {
+  width: 100%;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 10px 0;
+}
+
+canvas#wheelCanvas {
+  display: block;
+  max-width: 100%;
+}
+
+/* Center Overlay Badge */
+.center-overlay {
+  position: absolute;
+  background: #3A3D3E;
+  border: 2px solid #525658;
+  border-radius: 12px;
+  padding: 8px 18px;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+.center-overlay .timer-val {
+  font-size: 18px;
+  font-weight: 900;
+  color: #10B981;
+}
+
+.center-overlay .phase-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #D1D5DB;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+/* Right History Bar */
+.history-column {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-pill {
+  width: 36px;
+  height: 10px;
+  border-radius: 5px;
+}
+
+/* 2x2 Betting Grid */
+.bet-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.card-bet {
+  height: 86px;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: transform 0.15s, filter 0.15s;
+  position: relative;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+}
+
+.card-bet:active {
+  transform: scale(0.96);
+}
+
+.card-bet.card-2x {
+  background: #9CA3AF;
+  color: #111827;
+}
+
+.card-bet.card-3x {
+  background: #8B5CF6;
+  color: white;
+}
+
+.card-bet.card-5x {
+  background: #F97316;
+  color: white;
+}
+
+.card-bet.card-30x {
+  background: #10B981;
+  color: white;
+}
+
+.card-bet .mult-val {
+  font-size: 32px;
+  font-weight: 900;
+  letter-spacing: -0.5px;
+}
+
+.card-bet .placed-badge {
+  position: absolute;
+  bottom: 6px;
+  background: rgba(0, 0, 0, 0.4);
+  color: white;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+/* Bottom Chip Bar */
+.chip-bar {
+  background: #3B3448;
+  border-radius: 20px;
+  padding: 8px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.chip-btn {
+  background: #4D455D;
+  color: #D1D5DB;
+  border: none;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.chip-btn.active {
+  background: #181124;
+  color: #FFFFFF;
+  border: 2px solid #FACE15;
+  box-shadow: 0 0 10px rgba(250, 206, 21, 0.4);
+}
+
+.chip-btn .inr-tag {
+  background: #FACE15;
+  color: #000000;
+  font-size: 9px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  margin-right: 4px;
+  font-weight: 900;
+}

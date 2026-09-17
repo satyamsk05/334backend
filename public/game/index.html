@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Ring of Future - HTML5 / PixiJS Game</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/game/style.css">
+  <!-- PixiJS library for WebGL rendering fallback -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.4.2/pixi.min.js"></script>
+</head>
+<body>
+  <div class="game-container">
+    <!-- Top Header -->
+    <div class="top-header">
+      <button class="btn-back" onclick="goBack()">◄ Back</button>
+      <div class="wallet-pill" onclick="openDeposit()">
+        <span id="walletText">₹1850.00</span>
+        <span class="plus">+</span>
+      </div>
+    </div>
+
+    <!-- Canvas Stage Area -->
+    <div class="canvas-stage">
+      <div id="wheelCanvasContainer"></div>
+      
+      <!-- Center Status Pill -->
+      <div class="center-overlay" id="centerOverlay">
+        <div class="timer-val" id="timerText">15s</div>
+        <div class="phase-label" id="phaseText">PLACE BETS</div>
+      </div>
+
+      <!-- Right History Column -->
+      <div class="history-column" id="historyColumn"></div>
+    </div>
+
+    <!-- 2x2 Betting Grid -->
+    <div>
+      <div class="bet-grid">
+        <div class="card-bet card-2x" onclick="placeBet('2x')">
+          <div class="mult-val">2x</div>
+          <div class="placed-badge" id="betBadge2x" style="display:none;">₹0</div>
+        </div>
+        <div class="card-bet card-3x" onclick="placeBet('3x')">
+          <div class="mult-val">3x</div>
+          <div class="placed-badge" id="betBadge3x" style="display:none;">₹0</div>
+        </div>
+        <div class="card-bet card-5x" onclick="placeBet('5x')">
+          <div class="mult-val">5x</div>
+          <div class="placed-badge" id="betBadge5x" style="display:none;">₹0</div>
+        </div>
+        <div class="card-bet card-30x" onclick="placeBet('30x')">
+          <div class="mult-val">30x</div>
+          <div class="placed-badge" id="betBadge30x" style="display:none;">₹0</div>
+        </div>
+      </div>
+
+      <!-- Bottom Chip Selection Bar -->
+      <div class="chip-bar">
+        <button class="chip-btn active" onclick="selectChip(10, this)"><span class="inr-tag">INR</span>10</button>
+        <button class="chip-btn" onclick="selectChip(500, this)">500</button>
+        <button class="chip-btn" onclick="selectChip(2000, this)">2K</button>
+        <button class="chip-btn" onclick="selectChip(5000, this)">5K</button>
+        <button class="chip-btn" onclick="selectChip(20000, this)">20K</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/game/pixi-wheel.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: 334game-backend
+    restart: always
+    ports:
+      - "4000:4000"
+    env_file:
+      - ../.env
+    environment:
+      - PORT=4000
