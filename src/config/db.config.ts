@@ -34,4 +34,20 @@ export class DatabaseConfig {
   public static isConnected(): boolean {
     return pgPool !== null;
   }
+
+  public static async checkHealth(): Promise<boolean> {
+    const pool = this.getPool();
+
+    if (!pool) {
+      return false;
+    }
+
+    try {
+      await pool.query('SELECT 1');
+      return true;
+    } catch (err) {
+      console.error('❌ PostgreSQL health check failed:', err);
+      return false;
+    }
+  }
 }
