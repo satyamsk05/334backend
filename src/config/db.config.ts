@@ -50,4 +50,13 @@ export class DatabaseConfig {
       return false;
     }
   }
+
+  public static async close(): Promise<void> {
+    if (!pgPool) return;
+
+    const pool = pgPool;
+    pgPool = null;
+    await pool.end();
+    console.log('✅ PostgreSQL connection pool closed');
+  }
 }
