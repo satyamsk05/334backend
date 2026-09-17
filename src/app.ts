@@ -7,6 +7,7 @@ import { paymentRoutes } from './modules/payments/payment.routes';
 import { userRoutes } from './modules/users/user.routes';
 import { adminRouter } from './routes/admin';
 import { errorHandler } from './utils/errorHandler';
+import { DatabaseConfig } from './config/db.config';
 
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
   .split(',')
@@ -30,7 +31,6 @@ export function createApp() {
 
   app.use(cors({
     origin: (origin, callback) => {
-      // Permit server-to-server requests that do not include an Origin header.
       if (!origin || allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
@@ -43,26 +43,26 @@ export function createApp() {
   app.use(express.json({ limit: '100kb' }));
   app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 
-  // Static web assets
   app.use(express.static(path.join(__dirname, '../public')));
 
-  // Health check
-  app.get('/api/v1/health', (_req, res) => {
-    res.json({
-      status: 'ONLINE',
+  // Readiness check: confirms the API process and PostgreSQL are available.
+  app.get('/api/v1/health', async (_req, res) => {
+    const databaseHealthy = await DatabaseConfig.checkHealth();
+
+    res.status(databaseHealthy ? 200 : 503).json({
+      status: databaseHealthy ? 'ONLINE' : 'DEGRADED',
       service: '334game-backend-core',
+      database: databaseHealthy ? 'ONLINE' : 'OFFLINE',
       timestamp: new Date().toISOString()
     });
   });
 
-  // Feature Module Routers
   app.use('/api/v1/auth', authRoutes);
   app.use('/api/v1/wallet', walletRoutes);
   app.use('/api/v1/payments', paymentRoutes);
   app.use('/api/v1/users', userRoutes);
   app.use('/admin', adminRouter);
 
-  // Global Error Handler
   app.use(errorHandler);
 
   return app;
