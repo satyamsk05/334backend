@@ -17,9 +17,7 @@ export function createRateLimiter(windowMs: number, maxRequests: number) {
   cleanupTimer.unref();
 
   return (req: Request, res: Response, next: NextFunction): void => {
-    const forwardedFor = req.headers['x-forwarded-for'];
-    const forwardedIp = Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor?.split(',')[0];
-    const key = (forwardedIp || req.ip || req.socket.remoteAddress || 'unknown').trim();
+    const key = (req.ip || req.socket.remoteAddress || 'unknown').trim();
     const now = Date.now();
     const current = buckets.get(key);
 
