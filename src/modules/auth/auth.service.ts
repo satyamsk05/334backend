@@ -37,7 +37,7 @@ export class AuthService {
     }
 
     const token = jwt.sign(
-      { userId: user.id, phone: user.phone, name: user.name },
+      { userId: user.id, phone: user.phone, name: user.name, role: 'PLAYER' },
       envConfig.jwtSecret,
       { expiresIn: '30d' }
     );
@@ -46,13 +46,38 @@ export class AuthService {
   }
 
   /**
+   * Admin Authentication Handler (Strictly loads from envConfig)
+   */
+  public static async adminLogin(usernameInput: string, passwordInput: string): Promise<{ token: string; username: string }> {
+    const adminUser = envConfig.adminUsername;
+    const adminPass = envConfig.adminPassword;
+
+    if (!adminUser || !adminPass) {
+      throw new Error('Admin credentials are not configured in backend/.env');
+    }
+
+    if (usernameInput !== adminUser || passwordInput !== adminPass) {
+      throw new Error('Invalid Admin Username or Password');
+    }
+
+    const token = jwt.sign(
+      { username: adminUser, role: 'ADMIN' },
+      envConfig.adminJwtSecret || envConfig.jwtSecret,
+      { expiresIn: '1d' }
+    );
+
+    Logger.info(`[AUTH] Admin login successful for ${adminUser}`);
+    return { token, username: adminUser };
+  }
+
+  /**
    * Loggin.dev WhatsApp OTP-less initiation
    */
   public static initiateWhatsAppAuth(appKeyOverride?: string): { token: string; waLink: string } {
-    const appKey = appKeyOverride || envConfig.logginAppKey || 'J2T8R6YN';
+    const appKey = appKeyOverride || envConfig.logginAppKey;
     const token = `WA-AUTH-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const encodedMessage = encodeURIComponent(`Verify login code: ${token}`);
-    const waLink = `https://wa.me/919999999999?text=${encodedMessage}`; // Pre-filled WhatsApp link
+    const waLink = `https://wa.me/919999999999?text=${encodedMessage}`;
 
     AuthService.pendingWaAuths.set(token, {
       token,
@@ -71,7 +96,6 @@ export class AuthService {
   public static async verifyWhatsAppAuth(token: string, phoneInput?: string): Promise<{ verified: boolean; jwtToken?: string; user?: User }> {
     const auth = AuthService.pendingWaAuths.get(token);
     if (!auth) {
-      // Create instant session if token is submitted directly
       const phone = phoneInput || `91${Math.floor(7000000000 + Math.random() * 2999999999)}`;
       const result = await AuthService.loginOrRegister(phone, `WhatsAppUser_${phone.slice(-4)}`);
       return { verified: true, jwtToken: result.token, user: result.user };

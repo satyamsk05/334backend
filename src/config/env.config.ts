@@ -38,6 +38,8 @@ export const envConfig = {
   redisPassword: process.env.REDIS_PASSWORD || '',
   jwtSecret: requireEnv('JWT_SECRET'),
   adminJwtSecret: requireEnv('ADMIN_JWT_SECRET'),
+  adminUsername: requireEnv('ADMIN_USERNAME'),
+  adminPassword: requireEnv('ADMIN_PASSWORD'),
   telegramBotToken: requireEnv('TELEGRAM_BOT_TOKEN'),
   telegramChatId: requireEnv('TELEGRAM_CHAT_ID'),
   paymentUpiId: requireEnv('PAYMENT_UPI_ID'),

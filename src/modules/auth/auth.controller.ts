@@ -19,6 +19,20 @@ export class AuthController {
     }
   }
 
+  public static async adminLogin(req: Request, res: Response) {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return ResponseHandler.error(res, 'Username and password are required', 400);
+    }
+
+    try {
+      const result = await AuthService.adminLogin(username, password);
+      return ResponseHandler.success(res, result, 'Admin login successful');
+    } catch (err: any) {
+      return ResponseHandler.error(res, err.message || 'Invalid credentials', 401);
+    }
+  }
+
   public static async initiateWhatsApp(req: Request, res: Response) {
     const { appKey } = req.body;
     const result = AuthService.initiateWhatsAppAuth(appKey);
