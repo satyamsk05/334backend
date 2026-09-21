@@ -36,7 +36,8 @@ gamePageRouter.post('/api/v1/ring-of-future/bet', (req: Request, res: Response) 
 });
 
 gamePageRouter.get('/game/ring-of-future', (req: Request, res: Response) => {
-  const userId = (req.query.userId as string) || 'USR-304';
+  const rawUserId = (req.query.userId as string) || 'USR-304';
+  const userId = /^[a-zA-Z0-9_-]+$/.test(rawUserId) ? rawUserId : 'USR-304';
   const wallet = WalletLedger.getUserBalance(userId);
   const initialState = RingOfFutureEngine.getSnapshotForUser(userId);
 
@@ -149,7 +150,7 @@ gamePageRouter.get('/game/ring-of-future', (req: Request, res: Response) => {
   </div>
 
   <script>
-    const userId = "${userId}";
+    const userId = ${JSON.stringify(userId)};
     let selectedChipRupees = 10;
     let currentPhase = "${initialState.phase}";
     let targetSegmentIndex = ${initialState.winningSegmentIndex};

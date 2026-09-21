@@ -48,7 +48,7 @@ export function getAdminDashboardHtml(): string {
     <div id="loginSection" class="login-box">
         <h2>👑 Admin Login</h2>
         <p style="color: #A098B2; font-size: 13px; margin-bottom: 20px;">Enter Admin Secret Key to access dashboard</p>
-        <input type="password" id="secretInput" placeholder="Enter Admin Secret" value="admin-secret-334">
+        <input type="password" id="secretInput" placeholder="Enter Admin Secret" autocomplete="current-password">
         <button onclick="attemptLogin()">LOGIN TO DASHBOARD</button>
         <p id="errorMsg" style="color: #FF4D4D; font-size: 13px; margin-top: 12px; display: none;"></p>
     </div>

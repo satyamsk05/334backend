@@ -1,9 +1,6 @@
-export interface WalletBalance {
-  depositPaise: number;
-  winningPaise: number;
-  bonusPaise: number;
-  totalPaise: number;
-}
+import { WalletService, WalletBalanceState } from '../modules/wallet/wallet.service';
+
+export type WalletBalance = WalletBalanceState;
 
 export interface WalletTransaction {
   id: string;
@@ -18,30 +15,14 @@ export interface WalletTransaction {
 }
 
 export class WalletLedger {
-  private static inMemoryBalances = new Map<string, WalletBalance>();
   private static inMemoryTransactions = new Map<string, WalletTransaction[]>();
 
   public static getUserBalance(userId: string): WalletBalance {
-    if (!WalletLedger.inMemoryBalances.has(userId)) {
-      WalletLedger.inMemoryBalances.set(userId, {
-        depositPaise: 0,   // ₹0.00 initial real deposit balance
-        winningPaise: 0,   // ₹0.00 initial real winnings balance
-        bonusPaise: 0,     // ₹0.00 bonus balance
-        totalPaise: 0
-      });
-    }
-    return WalletLedger.inMemoryBalances.get(userId)!;
+    return WalletService.getBalance(userId);
   }
 
   public static addDepositCash(userId: string, amountPaise: number, utr: string): WalletBalance {
-    const current = WalletLedger.getUserBalance(userId);
-    const newDeposit = current.depositPaise + amountPaise;
-    const newTotal = newDeposit + current.winningPaise + current.bonusPaise;
-    const newBal = { ...current, depositPaise: newDeposit, totalPaise: newTotal };
-
-    WalletLedger.inMemoryBalances.set(userId, newBal);
-    WalletLedger.recordTransaction(userId, 'DEPOSIT', amountPaise, newTotal, utr || `DEP-${Date.now()}`, 'Cash Deposit');
-    return newBal;
+    return WalletService.creditDeposit(userId, amountPaise, utr || `DEP-${Date.now()}`, 'Cash Deposit');
   }
 
   // Alias for backward compatibility if called as addDemoCash
@@ -63,9 +44,9 @@ export class WalletLedger {
 
     const newWinning = current.winningPaise - amountPaise;
     const newTotal = current.depositPaise + newWinning + current.bonusPaise;
-    const newBal = { ...current, winningPaise: newWinning, totalPaise: newTotal };
+    current.winningPaise = newWinning;
+    current.totalPaise = newTotal;
 
-    WalletLedger.inMemoryBalances.set(userId, newBal);
     WalletLedger.recordTransaction(userId, 'WITHDRAWAL', amountPaise, newTotal, `WD-${Date.now()}`, `Withdrawal to UPI: ${upiId}`);
 
     return { success: true, message: `Withdrawal request of ₹${(amountPaise / 100).toFixed(2)} submitted successfully!` };

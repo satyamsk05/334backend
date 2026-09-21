@@ -24,3 +24,28 @@ export function authenticateJwt(req: Request, res: Response, next: NextFunction)
     return ResponseHandler.error(res, 'Invalid or expired token', 401);
   }
 }
+
+export function authenticateAdmin(req: Request, res: Response, next: NextFunction) {
+  const adminSecret = req.headers['x-admin-secret'] || req.query.secret;
+  const configuredSecret = process.env.ADMIN_SECRET_KEY || envConfig.adminPassword || 'admin-secret-334';
+
+  if (adminSecret && adminSecret === configuredSecret) {
+    return next();
+  }
+
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    try {
+      const decoded = jwt.verify(token, envConfig.adminJwtSecret || envConfig.jwtSecret) as any;
+      if (decoded.role === 'ADMIN') {
+        (req as any).admin = decoded;
+        return next();
+      }
+    } catch (e) {
+      // invalid admin token
+    }
+  }
+
+  return ResponseHandler.error(res, 'Unauthorized: Admin privileges required', 403);
+}

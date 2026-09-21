@@ -1,18 +1,21 @@
 import { Router } from 'express';
 import { DepositController } from './deposit.controller';
 import { WithdrawController } from './withdraw.controller';
+import { authenticateJwt, authenticateAdmin } from '../auth/auth.middleware';
 
 export const paymentRoutes = Router();
 
-// Deposits
-paymentRoutes.post('/deposit/initiate', DepositController.initiate);
+// User Actions (Require JWT Authentication)
+paymentRoutes.post('/deposit/initiate', authenticateJwt, DepositController.initiate);
 paymentRoutes.post('/deposit/utr', DepositController.submitUtr);
-paymentRoutes.get('/deposits', DepositController.getDeposits);
-paymentRoutes.post('/deposit/approve', DepositController.approve);
-paymentRoutes.post('/deposit/reject', DepositController.reject);
+paymentRoutes.post('/withdraw/request', authenticateJwt, WithdrawController.request);
 
-// Withdrawals
-paymentRoutes.post('/withdraw/request', WithdrawController.request);
-paymentRoutes.get('/withdrawals', WithdrawController.getWithdrawals);
-paymentRoutes.post('/withdraw/approve', WithdrawController.approve);
-paymentRoutes.post('/withdraw/reject', WithdrawController.reject);
+// Admin-Only Financial Operations
+paymentRoutes.get('/deposits', authenticateAdmin, DepositController.getDeposits);
+paymentRoutes.post('/deposit/approve', authenticateAdmin, DepositController.approve);
+paymentRoutes.post('/deposit/reject', authenticateAdmin, DepositController.reject);
+
+paymentRoutes.get('/withdrawals', authenticateAdmin, WithdrawController.getWithdrawals);
+paymentRoutes.post('/withdraw/approve', authenticateAdmin, WithdrawController.approve);
+paymentRoutes.post('/withdraw/reject', authenticateAdmin, WithdrawController.reject);
+

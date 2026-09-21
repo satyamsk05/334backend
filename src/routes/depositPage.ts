@@ -40,11 +40,13 @@ depositPageRouter.post('/api/v1/deposits/submit-utr', (req: Request, res: Respon
 });
 
 depositPageRouter.get('/pay', async (req: Request, res: Response) => {
-  const userId = (req.query.userId as string) || 'USR-304';
+  const rawUserId = (req.query.userId as string) || 'USR-304';
+  const userId = /^[a-zA-Z0-9_-]+$/.test(rawUserId) ? rawUserId : 'USR-304';
   const amountStr = (req.query.amount as string) || '200';
-  let orderId = req.query.orderId as string;
+  const rawOrderId = req.query.orderId as string;
+  let orderId = rawOrderId && /^[a-zA-Z0-9_-]+$/.test(rawOrderId) ? rawOrderId : '';
 
-  const amountRupees = parseFloat(amountStr) || 200;
+  const amountRupees = Math.max(10, Math.min(50000, parseFloat(amountStr) || 200));
 
   if (!orderId) {
     const order = FinancialService.initiateDeposit(userId, amountRupees);
@@ -136,7 +138,7 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
   </div>
 
   <script>
-    const orderId = "${orderId}";
+    const orderId = ${JSON.stringify(orderId)};
 
     function copyVpa() {
       const vpa = document.getElementById('vpaText').innerText;

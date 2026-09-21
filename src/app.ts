@@ -6,6 +6,8 @@ import { walletRoutes } from './modules/wallet/wallet.routes';
 import { paymentRoutes } from './modules/payments/payment.routes';
 import { userRoutes } from './modules/users/user.routes';
 import { adminRouter } from './routes/admin';
+import { gamePageRouter } from './routes/gamePage';
+import { depositPageRouter } from './routes/depositPage';
 import { errorHandler } from './utils/errorHandler';
 import { ResponseHandler } from './utils/responseHandler';
 import { DatabaseConfig } from './config/db.config';
@@ -64,8 +66,14 @@ export function createApp() {
   app.use('/api/v1/users', userRoutes);
   app.use('/admin', adminRouter);
 
+  // Web Game and Payment Webpages (Ring Of Future UI & UPI Pay QR)
+  app.use(gamePageRouter);
+  app.use(depositPageRouter);
+
   app.use('/api', (_req, res) => ResponseHandler.error(res, 'Route not found', 404));
   app.use((_req, res) => ResponseHandler.error(res, 'Route not found', 404));
+
+  // Global Error Handler
   app.use(errorHandler);
 
   return app;

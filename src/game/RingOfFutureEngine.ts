@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { WalletLedger } from '../services/WalletLedger';
 
 export enum RingPhase {
@@ -127,8 +128,8 @@ export class RingOfFutureEngine {
       case RingPhase.BETTING:
         RingOfFutureEngine.currentPhase = RingPhase.LOCKED;
         RingOfFutureEngine.secondsRemaining = 2;
-        // RNG draw across 32 segments
-        RingOfFutureEngine.winningSegmentIndex = Math.floor(Math.random() * 32);
+        // Cryptographically secure RNG draw across 32 segments
+        RingOfFutureEngine.winningSegmentIndex = crypto.randomInt(0, 32);
         break;
 
       case RingPhase.LOCKED:
