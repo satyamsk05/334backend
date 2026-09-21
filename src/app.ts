@@ -65,6 +65,7 @@ export function createApp() {
   app.use('/api/v1/payments', paymentRoutes);
   app.use('/api/v1/users', userRoutes);
   app.use('/admin', adminRouter);
+  app.use('/api/v1/admin', adminRouter);
 
   // Web Game and Payment Webpages (Ring Of Future UI & UPI Pay QR)
   app.use(gamePageRouter);
