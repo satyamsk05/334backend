@@ -27,9 +27,9 @@ export function authenticateJwt(req: Request, res: Response, next: NextFunction)
 
 export function authenticateAdmin(req: Request, res: Response, next: NextFunction) {
   const adminSecret = req.headers['x-admin-secret'] || req.query.secret;
-  const configuredSecret = process.env.ADMIN_SECRET_KEY || envConfig.adminPassword || 'admin-secret-334';
+  const configuredSecret = process.env.ADMIN_SECRET_KEY || envConfig.adminPassword;
 
-  if (adminSecret && adminSecret === configuredSecret) {
+  if (configuredSecret && adminSecret && adminSecret === configuredSecret) {
     return next();
   }
 

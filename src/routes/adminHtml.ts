@@ -161,7 +161,7 @@ export function getAdminDashboardHtml(): string {
     </div>
 
     <script>
-        let adminSecret = localStorage.getItem('adminSecret') || 'admin-secret-334';
+        let adminSecret = localStorage.getItem('adminSecret') || '';
 
         function attemptLogin() {
             const inputVal = document.getElementById('secretInput').value.trim();
