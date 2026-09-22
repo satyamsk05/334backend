@@ -74,10 +74,13 @@ export class AuthService {
    * Loggin.dev WhatsApp OTP-less initiation
    */
   public static initiateWhatsAppAuth(appKeyOverride?: string): { token: string; waLink: string } {
-    const appKey = appKeyOverride || envConfig.logginAppKey;
-    const token = `WA-AUTH-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const encodedMessage = encodeURIComponent(`Verify login code: ${token}`);
-    const waLink = `https://wa.me/919999999999?text=${encodedMessage}`;
+    const appKey = appKeyOverride || envConfig.logginAppKey || 'J2T8R6YN';
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let rand = '';
+    for (let i = 0; i < 6; i++) rand += chars[Math.floor(Math.random() * chars.length)];
+    const token = `${appKey}-${rand}`;
+    const msg = `Please do not edit this message.\nLOGGIN ${token}`;
+    const waLink = `https://wa.me/919989907408?text=${encodeURIComponent(msg)}`;
 
     AuthService.pendingWaAuths.set(token, {
       token,
@@ -86,7 +89,7 @@ export class AuthService {
       createdAt: Date.now()
     });
 
-    Logger.info(`[AUTH] Initiated Loggin.dev WhatsApp auth token: ${token} for appKey: ${appKey}`);
+    Logger.info(`[AUTH] Initiated Loggin.dev WhatsApp auth token: ${token}`);
     return { token, waLink };
   }
 
