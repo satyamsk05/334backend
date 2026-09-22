@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import jwt from 'jsonwebtoken';
 import { envConfig } from '../../config/env.config';
 import { User } from '../../database/models/User';
@@ -11,9 +13,52 @@ interface PendingWhatsAppAuth {
   createdAt: number;
 }
 
+const USERS_FILE = path.join(__dirname, '../../../data/users_ledger.json');
+
+function loadUsers(): User[] {
+  try {
+    if (fs.existsSync(USERS_FILE)) {
+      const data = JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8'));
+      if (Array.isArray(data)) return data;
+    }
+  } catch (e) {
+    console.error('Failed to load users from disk:', e);
+  }
+  return [
+    {
+      id: 'USR-9748',
+      phone: '9876549748',
+      name: 'Player_9748',
+      isBanned: false,
+      createdAt: 1790096083685,
+      updatedAt: 1790096612419
+    }
+  ];
+}
+
+const initialUsers = loadUsers();
+
 export class AuthService {
-  private static users = new Map<string, User>();
+  private static users = new Map<string, User>(
+    initialUsers.flatMap(u => [
+      [u.id, u],
+      ...(u.phone ? [[u.phone, u] as [string, User]] : [])
+    ])
+  );
   private static pendingWaAuths = new Map<string, PendingWhatsAppAuth>();
+
+  private static persist() {
+    try {
+      const dir = path.dirname(USERS_FILE);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const unique = Array.from(new Set(AuthService.users.values()));
+      fs.writeFileSync(USERS_FILE, JSON.stringify(unique, null, 2), 'utf-8');
+    } catch (e) {
+      console.error('Failed to persist users:', e);
+    }
+  }
 
   public static async loginOrRegister(phone: string, name?: string): Promise<{ token: string; user: User }> {
     const cleanPhone = phone.trim();
@@ -30,6 +75,7 @@ export class AuthService {
       };
       AuthService.users.set(cleanPhone, user);
       AuthService.users.set(user.id, user);
+      AuthService.persist();
     }
 
     if (user.isBanned) {
@@ -140,6 +186,7 @@ export class AuthService {
       if (phone) {
         AuthService.users.set(phone, user);
       }
+      AuthService.persist();
     }
     return user;
   }
@@ -154,6 +201,7 @@ export class AuthService {
     if (!user) return null;
     user.isBanned = isBanned;
     user.updatedAt = Date.now();
+    AuthService.persist();
     return user;
   }
 }

@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import {
   DepositOrder,
   DepositStatus,
@@ -8,9 +10,71 @@ import { WalletLedger } from './WalletLedger';
 import { TelegramBotService } from './TelegramBotService';
 import { AuthService } from '../modules/auth/auth.service';
 
+const LEDGER_FILE = path.join(__dirname, '../../data/financial_ledger.json');
+
+function loadLedger(): { deposits: DepositOrder[]; withdrawals: WithdrawalRecord[] } {
+  try {
+    if (fs.existsSync(LEDGER_FILE)) {
+      const data = JSON.parse(fs.readFileSync(LEDGER_FILE, 'utf-8'));
+      return {
+        deposits: Array.isArray(data.deposits) ? data.deposits : [],
+        withdrawals: Array.isArray(data.withdrawals) ? data.withdrawals : []
+      };
+    }
+  } catch (e) {
+    console.error('Failed to load financial ledger from disk:', e);
+  }
+  return {
+    deposits: [
+      {
+        depositId: 'DEP-1790096604569-361',
+        userId: 'USR-9748',
+        amountRupees: 200,
+        amountPaise: 20000,
+        status: DepositStatus.PENDING,
+        createdAt: 1790096604569,
+        updatedAt: 1790096612419,
+        utr: '460764618643'
+      },
+      {
+        depositId: 'DEP-1790096083685-737',
+        userId: 'USR-9748',
+        amountRupees: 500,
+        amountPaise: 50000,
+        status: DepositStatus.PENDING,
+        createdAt: 1790096083685,
+        updatedAt: 1790096089312,
+        utr: '643439161616'
+      }
+    ],
+    withdrawals: []
+  };
+}
+
+const initialLedger = loadLedger();
+
 export class FinancialService {
-  private static depositOrders = new Map<string, DepositOrder>();
-  private static withdrawalRecords = new Map<string, WithdrawalRecord>();
+  private static depositOrders = new Map<string, DepositOrder>(
+    initialLedger.deposits.map(d => [d.depositId, d])
+  );
+  private static withdrawalRecords = new Map<string, WithdrawalRecord>(
+    initialLedger.withdrawals.map(w => [w.withdrawalId, w])
+  );
+
+  private static persist() {
+    try {
+      const dir = path.dirname(LEDGER_FILE);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(LEDGER_FILE, JSON.stringify({
+        deposits: Array.from(FinancialService.depositOrders.values()),
+        withdrawals: Array.from(FinancialService.withdrawalRecords.values())
+      }, null, 2), 'utf-8');
+    } catch (e) {
+      console.error('Failed to persist financial ledger:', e);
+    }
+  }
 
   public static initiateDeposit(userId: string, amountRupees: number): DepositOrder {
     AuthService.ensureUserExists(userId);
@@ -28,6 +92,7 @@ export class FinancialService {
     };
 
     FinancialService.depositOrders.set(depositId, order);
+    FinancialService.persist();
 
     TelegramBotService.sendAlert(
       `💳 *Deposit Initiated*\nOrder: \`${depositId}\`\nUser: \`${userId}\`\nAmount: ₹${amountRupees.toFixed(2)}`
@@ -69,6 +134,7 @@ export class FinancialService {
     order.utr = utr.trim();
     order.updatedAt = Date.now();
     FinancialService.depositOrders.set(depositId, order);
+    FinancialService.persist();
 
     // Send Telegram alert to Admin
     try {
@@ -108,6 +174,7 @@ export class FinancialService {
     order.status = DepositStatus.APPROVED;
     order.updatedAt = Date.now();
     FinancialService.depositOrders.set(depositId, order);
+    FinancialService.persist();
 
     // Credit user deposit balance in integer paise
     WalletLedger.addDepositCash(order.userId, order.amountPaise, order.utr || order.depositId);
@@ -130,6 +197,7 @@ export class FinancialService {
     order.status = DepositStatus.REJECTED;
     order.updatedAt = Date.now();
     FinancialService.depositOrders.set(depositId, order);
+    FinancialService.persist();
 
     TelegramBotService.sendAlert(
       `❌ *Deposit Rejected*\nOrder: \`${depositId}\`\nUser: \`${order.userId}\`\nAmount: ₹${order.amountRupees.toFixed(2)}`
@@ -170,6 +238,7 @@ export class FinancialService {
     };
 
     FinancialService.withdrawalRecords.set(withdrawalId, record);
+    FinancialService.persist();
 
     WalletLedger.recordTransaction(
       userId,
@@ -209,17 +278,18 @@ export class FinancialService {
     record.status = WithdrawalStatus.APPROVED;
     record.updatedAt = Date.now();
     FinancialService.withdrawalRecords.set(withdrawalId, record);
+    FinancialService.persist();
 
     TelegramBotService.sendAlert(
       `✅ *Withdrawal Approved & Paid*\nID: \`${withdrawalId}\`\nUser: \`${record.userId}\`\nAmount: ₹${record.amountRupees.toFixed(2)}\nUPI: \`${record.upiId}\``
     );
 
-    return { success: true, message: `Withdrawal ₹${record.amountRupees} approved and paid!`, record };
+    return { success: true, message: `Withdrawal of ₹${record.amountRupees} approved and paid out!`, record };
   }
 
   public static rejectWithdrawal(withdrawalId: string): { success: boolean; message: string; record?: WithdrawalRecord } {
     const record = FinancialService.withdrawalRecords.get(withdrawalId);
-    if (!record) return { success: false, message: 'Withdrawal record not found' };
+    if (!record) return { success: false, message: 'Withdrawal request not found' };
 
     if (record.status !== WithdrawalStatus.PENDING) {
       return { success: false, message: `Withdrawal is already ${record.status}` };
@@ -228,6 +298,7 @@ export class FinancialService {
     record.status = WithdrawalStatus.REJECTED;
     record.updatedAt = Date.now();
     FinancialService.withdrawalRecords.set(withdrawalId, record);
+    FinancialService.persist();
 
     // Refund debited winnings back to user
     const wallet = WalletLedger.getUserBalance(record.userId);
