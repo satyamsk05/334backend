@@ -51,8 +51,8 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 export const envConfig = {
   port,
   nodeEnv: process.env.NODE_ENV || 'development',
-  supabaseUrl: requireProductionEnv('SUPABASE_URL'),
-  supabaseKey: requireProductionEnv('SUPABASE_SERVICE_ROLE_KEY') || requireProductionEnv('SUPABASE_KEY'),
+  supabaseUrl: readEnv('SUPABASE_URL'),
+  supabaseKey: readEnv('SUPABASE_SERVICE_ROLE_KEY') || readEnv('SUPABASE_KEY'),
   databaseUrl: buildDatabaseUrl(),
   redisHost: process.env.REDIS_HOST || '127.0.0.1',
   redisPort: Number.parseInt(process.env.REDIS_PORT || '6379', 10),

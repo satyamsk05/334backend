@@ -26,6 +26,11 @@ export class FinancialService {
     };
 
     FinancialService.depositOrders.set(depositId, order);
+
+    TelegramBotService.sendAlert(
+      `💳 *Deposit Initiated*\nOrder: \`${depositId}\`\nUser: \`${userId}\`\nAmount: ₹${amountRupees.toFixed(2)}`
+    );
+
     return order;
   }
 

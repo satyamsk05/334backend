@@ -4,8 +4,8 @@ import { FinancialService } from '../services/FinancialService';
 
 export const depositPageRouter = Router();
 
-const MERCHANT_UPI_ID = process.env.MERCHANT_UPI_ID || '334game@upi';
-const MERCHANT_NAME = '334Game Cash Deposit';
+const MERCHANT_UPI_ID = process.env.PAYMENT_UPI_ID || process.env.MERCHANT_UPI_ID || 'satyamskk@ptyes';
+const MERCHANT_NAME = process.env.PAYMENT_MERCHANT_NAME || process.env.MERCHANT_NAME || 'satyam';
 
 depositPageRouter.post('/api/v1/deposits/initiate', (req: Request, res: Response) => {
   const { userId = 'USR-304', amountRupees } = req.body;
