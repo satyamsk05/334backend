@@ -26,17 +26,23 @@ depositPageRouter.post('/api/v1/deposits/initiate', (req: Request, res: Response
 });
 
 depositPageRouter.post('/api/v1/deposits/submit-utr', (req: Request, res: Response) => {
-  const { depositId, utr } = req.body;
-  if (!depositId) {
-    return res.status(400).json({ success: false, message: 'Deposit ID is required' });
-  }
+  try {
+    const { depositId, utr, userId, amountRupees } = req.body;
+    if (!depositId) {
+      return res.status(400).json({ success: false, message: 'Deposit ID is required' });
+    }
 
-  const result = FinancialService.submitUtr(depositId, utr);
-  if (!result.success) {
-    return res.status(400).json(result);
-  }
+    const parsedAmount = amountRupees ? parseFloat(amountRupees) : undefined;
+    const result = FinancialService.submitUtr(depositId, utr, userId, parsedAmount);
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
 
-  res.json(result);
+    res.json(result);
+  } catch (err: any) {
+    console.error('Error submitting UTR:', err);
+    res.status(500).json({ success: false, message: err?.message || 'Error submitting UTR' });
+  }
 });
 
 depositPageRouter.get('/pay', async (req: Request, res: Response) => {
@@ -139,6 +145,8 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
 
   <script>
     const orderId = ${JSON.stringify(orderId)};
+    const depositUserId = ${JSON.stringify(userId)};
+    const depositAmount = ${amountRupees};
 
     function copyVpa() {
       const vpa = document.getElementById('vpaText').innerText;
@@ -167,7 +175,12 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
         const res = await fetch('/api/v1/deposits/submit-utr', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ depositId: orderId, utr: utr })
+          body: JSON.stringify({
+            depositId: orderId,
+            utr: utr,
+            userId: depositUserId,
+            amountRupees: depositAmount
+          })
         });
         const data = await res.json();
 

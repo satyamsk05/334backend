@@ -13,10 +13,10 @@ import { ResponseHandler } from './utils/responseHandler';
 import { DatabaseConfig } from './config/db.config';
 import { createRateLimiter } from './middleware/rateLimit';
 
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const corsOriginEnv = process.env.CORS_ORIGIN || process.env.ALLOWED_ORIGINS;
+const allowedOrigins = corsOriginEnv && corsOriginEnv !== '*'
+  ? corsOriginEnv.split(',').map((origin) => origin.trim()).filter(Boolean)
+  : [];
 
 const globalRateLimit = createRateLimiter(60_000, 120);
 const authRateLimit = createRateLimiter(60_000, 20);
@@ -39,11 +39,47 @@ export function createApp() {
 
   app.use(cors({
     origin: (origin, callback) => {
-      // Allow native mobile apps, postman/curl (no origin)
+      // Allow native mobile apps, postman/curl, same-origin without origin header
       if (!origin) return callback(null, true);
-      const isAllowedOrigin = allowedOrigins.includes(origin) || origin === 'https://admin-penal.vercel.app' || origin.endsWith('-satyamsk05s-projects.vercel.app');
-      if (isAllowedOrigin) return callback(null, true);
-      return callback(new Error('Origin blocked by CORS security policy'));
+
+      // If CORS_ORIGIN is set to '*' or non-production, allow all
+      if (corsOriginEnv === '*' || process.env.NODE_ENV !== 'production') {
+        return callback(null, true);
+      }
+
+      try {
+        const url = new URL(origin);
+        const host = url.hostname;
+
+        // Allow localhost and local loopback on any port
+        if (host === 'localhost' || host === '127.0.0.1') {
+          return callback(null, true);
+        }
+
+        // Allow EC2 server public host/IP on any port (deposit page, game page)
+        const publicHost = process.env.PUBLIC_HOST || '3.7.73.109';
+        if (host === publicHost || host === '3.7.73.109') {
+          return callback(null, true);
+        }
+
+        // Allow Admin panel on Vercel (production & preview deployments)
+        if (
+          origin === 'https://admin-penal.vercel.app' ||
+          host.endsWith('.vercel.app')
+        ) {
+          return callback(null, true);
+        }
+
+        // Allow explicitly configured origins
+        if (allowedOrigins.includes(origin) || allowedOrigins.includes(url.origin)) {
+          return callback(null, true);
+        }
+
+        // Gracefully disallow unknown external origin without throwing a 500 error
+        return callback(null, false);
+      } catch {
+        return callback(null, false);
+      }
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

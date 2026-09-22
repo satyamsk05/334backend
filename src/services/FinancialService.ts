@@ -34,10 +34,28 @@ export class FinancialService {
     return order;
   }
 
-  public static submitUtr(depositId: string, utr: string): { success: boolean; message: string; order?: DepositOrder } {
-    const order = FinancialService.depositOrders.get(depositId);
+  public static submitUtr(
+    depositId: string,
+    utr: string,
+    fallbackUserId?: string,
+    fallbackAmountRupees?: number
+  ): { success: boolean; message: string; order?: DepositOrder } {
+    let order = FinancialService.depositOrders.get(depositId);
     if (!order) {
-      return { success: false, message: 'Deposit request not found' };
+      if (fallbackUserId && fallbackAmountRupees) {
+        order = {
+          depositId,
+          userId: fallbackUserId,
+          amountRupees: fallbackAmountRupees,
+          amountPaise: Math.round(fallbackAmountRupees * 100),
+          status: DepositStatus.PENDING,
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        };
+        FinancialService.depositOrders.set(depositId, order);
+      } else {
+        return { success: false, message: 'Deposit request not found' };
+      }
     }
 
     if (!utr || utr.trim().length < 6) {
@@ -49,9 +67,13 @@ export class FinancialService {
     FinancialService.depositOrders.set(depositId, order);
 
     // Send Telegram alert to Admin
-    TelegramBotService.sendAlert(
-      `📥 *New Deposit Pending Approval*\nOrder: \`${depositId}\`\nUser: \`${order.userId}\`\nAmount: ₹${order.amountRupees.toFixed(2)}\nUTR: \`${order.utr}\``
-    );
+    try {
+      TelegramBotService.sendAlert(
+        `📥 *New Deposit Pending Approval*\nOrder: \`${depositId}\`\nUser: \`${order.userId}\`\nAmount: ₹${order.amountRupees.toFixed(2)}\nUTR: \`${order.utr}\``
+      ).catch((err) => console.error('Telegram Bot Alert send failed:', err));
+    } catch (e) {
+      console.error('Telegram Bot Alert error:', e);
+    }
 
     return { success: true, message: 'UTR submitted successfully. Awaiting Admin Approval.', order };
   }
