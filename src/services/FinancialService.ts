@@ -6,12 +6,14 @@ import {
 } from '../models/DepositOrder';
 import { WalletLedger } from './WalletLedger';
 import { TelegramBotService } from './TelegramBotService';
+import { AuthService } from '../modules/auth/auth.service';
 
 export class FinancialService {
   private static depositOrders = new Map<string, DepositOrder>();
   private static withdrawalRecords = new Map<string, WithdrawalRecord>();
 
   public static initiateDeposit(userId: string, amountRupees: number): DepositOrder {
+    AuthService.ensureUserExists(userId);
     const amountPaise = Math.round(amountRupees * 100);
     const depositId = `DEP-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
 
@@ -57,6 +59,8 @@ export class FinancialService {
         return { success: false, message: 'Deposit request not found' };
       }
     }
+
+    AuthService.ensureUserExists(order.userId);
 
     if (!utr || utr.trim().length < 6) {
       return { success: false, message: 'Please enter a valid UTR / Reference Number' };

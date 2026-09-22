@@ -125,6 +125,25 @@ export class AuthService {
     return AuthService.users.get(userId);
   }
 
+  public static ensureUserExists(userId: string, name?: string, phone?: string): User {
+    let user = AuthService.users.get(userId);
+    if (!user) {
+      user = {
+        id: userId,
+        phone: phone || '',
+        name: name || (userId.startsWith('USR-') ? `Player_${userId.slice(-4)}` : userId),
+        isBanned: false,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+      AuthService.users.set(userId, user);
+      if (phone) {
+        AuthService.users.set(phone, user);
+      }
+    }
+    return user;
+  }
+
   public static getAllUsers(): User[] {
     const uniqueUsers = new Set(AuthService.users.values());
     return Array.from(uniqueUsers);
