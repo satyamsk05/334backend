@@ -74,7 +74,10 @@ export class AuthService {
    * Loggin.dev WhatsApp OTP-less initiation
    */
   public static initiateWhatsAppAuth(appKeyOverride?: string): { token: string; waLink: string } {
-    const appKey = appKeyOverride || envConfig.logginAppKey || 'J2T8R6YN';
+    const appKey = appKeyOverride || envConfig.logginAppKey;
+    if (!appKey) {
+      throw new Error('LOGGIN_APP_KEY is not configured in backend .env');
+    }
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let rand = '';
     for (let i = 0; i < 6; i++) rand += chars[Math.floor(Math.random() * chars.length)];
