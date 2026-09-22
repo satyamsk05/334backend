@@ -9,9 +9,12 @@ export class DepositController {
     if (!validation.valid) {
       return ResponseHandler.error(res, validation.message || 'Invalid amount', 400);
     }
-    const userId = (req as any).user?.userId || req.body.userId || 'DEFAULT_USER';
+    const authenticatedUserId = (req as any).user?.userId;
+    if (!authenticatedUserId) {
+      return ResponseHandler.error(res, 'Unauthorized: Valid user token required', 401);
+    }
     const { amountRupees } = req.body;
-    const order = PaymentService.initiateDeposit(userId, amountRupees);
+    const order = PaymentService.initiateDeposit(authenticatedUserId, amountRupees);
     return ResponseHandler.success(res, order, 'Deposit order created');
   }
 

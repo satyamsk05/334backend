@@ -26,7 +26,11 @@ export function authenticateJwt(req: Request, res: Response, next: NextFunction)
 }
 
 export function authenticateAdmin(req: Request, res: Response, next: NextFunction) {
-  const adminSecret = req.headers['x-admin-secret'] || req.query.secret;
+  if (req.query.secret) {
+    return ResponseHandler.error(res, 'Authentication via URL query parameters is forbidden', 400);
+  }
+
+  const adminSecret = req.headers['x-admin-secret'];
   const configuredSecret = process.env.ADMIN_SECRET_KEY || envConfig.adminPassword;
 
   if (configuredSecret && adminSecret && adminSecret === configuredSecret) {
