@@ -24,16 +24,7 @@ function loadUsers(): User[] {
   } catch (e) {
     console.error('Failed to load users from disk:', e);
   }
-  return [
-    {
-      id: 'USR-9748',
-      phone: '9876549748',
-      name: 'Player_9748',
-      isBanned: false,
-      createdAt: 1790096083685,
-      updatedAt: 1790096612419
-    }
-  ];
+  return [];
 }
 
 const initialUsers = loadUsers();

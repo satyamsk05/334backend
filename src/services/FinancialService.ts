@@ -25,28 +25,7 @@ function loadLedger(): { deposits: DepositOrder[]; withdrawals: WithdrawalRecord
     console.error('Failed to load financial ledger from disk:', e);
   }
   return {
-    deposits: [
-      {
-        depositId: 'DEP-1790096604569-361',
-        userId: 'USR-9748',
-        amountRupees: 200,
-        amountPaise: 20000,
-        status: DepositStatus.PENDING,
-        createdAt: 1790096604569,
-        updatedAt: 1790096612419,
-        utr: '460764618643'
-      },
-      {
-        depositId: 'DEP-1790096083685-737',
-        userId: 'USR-9748',
-        amountRupees: 500,
-        amountPaise: 50000,
-        status: DepositStatus.PENDING,
-        createdAt: 1790096083685,
-        updatedAt: 1790096089312,
-        utr: '643439161616'
-      }
-    ],
+    deposits: [],
     withdrawals: []
   };
 }
