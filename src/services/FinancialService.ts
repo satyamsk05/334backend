@@ -9,6 +9,7 @@ import {
 import { WalletLedger } from './WalletLedger';
 import { TelegramBotService } from './TelegramBotService';
 import { AuthService } from '../modules/auth/auth.service';
+import { SocketServer } from '../sockets/socket.server';
 
 const LEDGER_FILE = path.join(__dirname, '../../data/financial_ledger.json');
 
@@ -157,6 +158,33 @@ export class FinancialService {
 
     // Credit user deposit balance in integer paise
     WalletLedger.addDepositCash(order.userId, order.amountPaise, order.utr || order.depositId);
+
+    // Live sync over WebSockets to client app & webpage
+    try {
+      const updatedBalance = WalletLedger.getUserBalance(order.userId);
+      SocketServer.emitToUser(order.userId, 'WALLET_UPDATE', {
+        userId: order.userId,
+        depositPaise: updatedBalance.depositPaise,
+        winningPaise: updatedBalance.winningPaise,
+        bonusPaise: updatedBalance.bonusPaise,
+        totalPaise: updatedBalance.totalPaise,
+        depositRupees: updatedBalance.depositPaise / 100,
+        winningRupees: updatedBalance.winningPaise / 100,
+        bonusRupees: updatedBalance.bonusPaise / 100,
+        totalRupees: updatedBalance.totalPaise / 100
+      });
+      SocketServer.emitToUser(order.userId, 'DEPOSIT_STATUS', {
+        depositId: order.depositId,
+        status: DepositStatus.APPROVED,
+        amountRupees: order.amountRupees
+      });
+      SocketServer.broadcast('WALLET_UPDATE', {
+        userId: order.userId,
+        wallet: updatedBalance
+      });
+    } catch (err) {
+      console.error('Socket notification error on deposit approval:', err);
+    }
 
     TelegramBotService.sendAlert(
       `✅ *Deposit Approved*\nOrder: \`${depositId}\`\nUser: \`${order.userId}\`\nAmount: ₹${order.amountRupees.toFixed(2)}`

@@ -25,6 +25,22 @@ export function authenticateJwt(req: Request, res: Response, next: NextFunction)
   }
 }
 
+export function optionalAuthenticateJwt(req: Request, _res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.slice('Bearer '.length).trim();
+    if (token) {
+      try {
+        const decoded = jwt.verify(token, envConfig.jwtSecret);
+        (req as any).user = decoded;
+      } catch (err) {
+        // ignore invalid token for optional auth
+      }
+    }
+  }
+  return next();
+}
+
 export function authenticateAdmin(req: Request, res: Response, next: NextFunction) {
   if (req.query.secret) {
     return ResponseHandler.error(res, 'Authentication via URL query parameters is forbidden', 400);
