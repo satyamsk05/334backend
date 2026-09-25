@@ -107,7 +107,7 @@ export class RingOfFutureEngine {
   }
 
   private static broadcast(): void {
-    const defaultState = RingOfFutureEngine.getSnapshotForUser('USR-304');
+    const defaultState = RingOfFutureEngine.getSnapshotForUser('');
     RingOfFutureEngine.stateListeners.forEach((cb) => cb(defaultState));
   }
 
@@ -295,5 +295,9 @@ export class RingOfFutureEngine {
       lastWinAmountPaise,
       recentResults: [...RingOfFutureEngine.recentResults]
     };
+  }
+
+  public static getRoundCount(): number {
+    return RingOfFutureEngine.roundSequence;
   }
 }

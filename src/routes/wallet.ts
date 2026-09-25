@@ -5,13 +5,19 @@ import { TelegramBotService } from '../services/TelegramBotService';
 export const walletRouter = Router();
 
 walletRouter.get('/transactions', (req: Request, res: Response) => {
-  const userId = (req.query.userId as string) || 'USR-304';
+  const userId = req.query.userId as string;
+  if (!userId || !userId.trim()) {
+    return res.status(400).json({ success: false, message: 'userId query parameter is required' });
+  }
   const transactions = WalletLedger.getTransactions(userId);
   res.json({ success: true, data: transactions });
 });
 
 walletRouter.post('/deposit', async (req: Request, res: Response) => {
-  const { userId = 'USR-304', amountRupees, amountPaise, utr = '' } = req.body;
+  const { userId, amountRupees, amountPaise, utr = '' } = req.body;
+  if (!userId || typeof userId !== 'string' || !userId.trim()) {
+    return res.status(400).json({ success: false, message: 'Valid userId is required' });
+  }
   const paise = amountPaise ? parseInt(amountPaise, 10) : Math.round(parseFloat(amountRupees || '0') * 100);
 
   if (paise <= 0) {
@@ -31,7 +37,10 @@ walletRouter.post('/deposit', async (req: Request, res: Response) => {
 });
 
 walletRouter.post('/withdraw', async (req: Request, res: Response) => {
-  const { userId = 'USR-304', amountRupees, amountPaise, upiId = '' } = req.body;
+  const { userId, amountRupees, amountPaise, upiId = '' } = req.body;
+  if (!userId || typeof userId !== 'string' || !userId.trim()) {
+    return res.status(400).json({ success: false, message: 'Valid userId is required' });
+  }
   const paise = amountPaise ? parseInt(amountPaise, 10) : Math.round(parseFloat(amountRupees || '0') * 100);
 
   if (!upiId) {

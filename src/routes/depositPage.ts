@@ -9,7 +9,10 @@ const MERCHANT_NAME = process.env.PAYMENT_MERCHANT_NAME || process.env.MERCHANT_
 
 // Deposit Initiate API
 depositPageRouter.post('/api/v1/deposits/initiate', (req: Request, res: Response) => {
-  const { userId = 'USR-304', amountRupees } = req.body;
+  const { userId, amountRupees } = req.body;
+  if (!userId || typeof userId !== 'string' || !userId.trim()) {
+    return res.status(400).json({ success: false, message: 'Valid userId is required' });
+  }
   const num = parseFloat(amountRupees);
   if (isNaN(num) || num <= 0) {
     return res.status(400).json({ success: false, message: 'Invalid deposit amount' });
@@ -83,8 +86,11 @@ depositPageRouter.post('/api/v1/deposits/submit-utr', (req: Request, res: Respon
 
 // Auto-UPI Payment Webpage
 depositPageRouter.get('/pay', async (req: Request, res: Response) => {
-  const rawUserId = (req.query.userId as string) || 'USR-304';
-  const userId = /^[a-zA-Z0-9_-]+$/.test(rawUserId) ? rawUserId : 'USR-304';
+  const rawUserId = (req.query.userId as string);
+  if (!rawUserId || !/^[a-zA-Z0-9_-]+$/.test(rawUserId)) {
+    return res.status(400).send('<div style="padding: 20px; font-family: sans-serif; text-align: center; color: red;"><h3>Error: Valid userId parameter is required to access payment gateway.</h3></div>');
+  }
+  const userId = rawUserId;
   const amountStr = (req.query.amount as string) || '200';
   const rawOrderId = req.query.orderId as string;
   let orderId = rawOrderId && /^[a-zA-Z0-9_-]+$/.test(rawOrderId) ? rawOrderId : '';

@@ -4,8 +4,11 @@ import { ResponseHandler } from '../../utils/responseHandler';
 
 export class WalletController {
   public static getBalance(req: Request, res: Response) {
-    const rawUserId = (req as any).user?.userId || (req as any).user?.id || (req.query.userId as string) || 'USR-304';
-    const userId = typeof rawUserId === 'string' && /^[a-zA-Z0-9_-]+$/.test(rawUserId) ? rawUserId : 'USR-304';
+    const rawUserId = (req as any).user?.userId || (req as any).user?.id || (req.query.userId as string);
+    if (!rawUserId || typeof rawUserId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(rawUserId)) {
+      return ResponseHandler.error(res, 'Valid userId is required', 400);
+    }
+    const userId = rawUserId;
     const balance = WalletService.getBalance(userId);
     return ResponseHandler.success(res, {
       userId,
@@ -21,8 +24,11 @@ export class WalletController {
   }
 
   public static getTransactions(req: Request, res: Response) {
-    const rawUserId = (req as any).user?.userId || (req as any).user?.id || (req.query.userId as string) || 'USR-304';
-    const userId = typeof rawUserId === 'string' && /^[a-zA-Z0-9_-]+$/.test(rawUserId) ? rawUserId : 'USR-304';
+    const rawUserId = (req as any).user?.userId || (req as any).user?.id || (req.query.userId as string);
+    if (!rawUserId || typeof rawUserId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(rawUserId)) {
+      return ResponseHandler.error(res, 'Valid userId is required', 400);
+    }
+    const userId = rawUserId;
     const txs = WalletService.getTransactions(userId);
     return ResponseHandler.success(res, txs, 'Transactions history fetched');
   }

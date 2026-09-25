@@ -5,14 +5,17 @@ import { WalletLedger } from '../services/WalletLedger';
 export const gamePageRouter = Router();
 
 gamePageRouter.get('/api/v1/ring-of-future/state', (req: Request, res: Response) => {
-  const userId = (req.query.userId as string) || 'USR-304';
+  const userId = (req.query.userId as string) || '';
   const state = RingOfFutureEngine.getSnapshotForUser(userId);
-  const wallet = WalletLedger.getUserBalance(userId);
+  const wallet = userId ? WalletLedger.getUserBalance(userId) : { depositPaise: 0, winningPaise: 0, bonusPaise: 0, totalPaise: 0 };
   res.json({ success: true, data: { gameState: state, wallet } });
 });
 
 gamePageRouter.post('/api/v1/ring-of-future/bet', (req: Request, res: Response) => {
-  const { userId = 'USR-304', multiplierType, amountRupees } = req.body;
+  const { userId, multiplierType, amountRupees } = req.body;
+  if (!userId || typeof userId !== 'string' || !userId.trim()) {
+    return res.status(400).json({ success: false, message: 'Valid userId is required' });
+  }
   const num = parseFloat(amountRupees);
   if (isNaN(num) || num <= 0) {
     return res.status(400).json({ success: false, message: 'Invalid bet amount' });
@@ -36,8 +39,11 @@ gamePageRouter.post('/api/v1/ring-of-future/bet', (req: Request, res: Response) 
 });
 
 gamePageRouter.get('/game/ring-of-future', (req: Request, res: Response) => {
-  const rawUserId = (req.query.userId as string) || 'USR-304';
-  const userId = /^[a-zA-Z0-9_-]+$/.test(rawUserId) ? rawUserId : 'USR-304';
+  const rawUserId = (req.query.userId as string);
+  if (!rawUserId || !/^[a-zA-Z0-9_-]+$/.test(rawUserId)) {
+    return res.status(400).send('<div style="padding: 20px; font-family: sans-serif; text-align: center; color: red;"><h3>Error: Valid userId parameter is required to access Ring of Future.</h3></div>');
+  }
+  const userId = rawUserId;
   const wallet = WalletLedger.getUserBalance(userId);
   const initialState = RingOfFutureEngine.getSnapshotForUser(userId);
 

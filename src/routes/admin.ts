@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import { config } from '../config/env';
 import { getAdminDashboardHtml } from './adminHtml';
 import { FinancialService } from '../services/FinancialService';
+import { AuthService } from '../modules/auth/auth.service';
+import { RingOfFutureEngine } from '../game/RingOfFutureEngine';
 
 export const adminRouter = Router();
 
@@ -34,15 +36,35 @@ adminRouter.use((req: Request, res: Response, next) => {
 });
 
 adminRouter.get('/analytics', (req: Request, res: Response) => {
+  const users = AuthService.getAllUsers();
+  const allDeposits = FinancialService.getAllDeposits();
+  const allWithdrawals = FinancialService.getAllWithdrawals();
+
+  const totalDepositsRupees = allDeposits
+    .filter(d => d.status === 'APPROVED')
+    .reduce((sum, d) => sum + (d.amountRupees || 0), 0);
+
+  const totalWithdrawalsRupees = allWithdrawals
+    .filter(w => w.status === 'APPROVED')
+    .reduce((sum, w) => sum + (w.amountRupees || 0), 0);
+
+  const netHouseProfitRupees = Math.max(0, totalDepositsRupees - totalWithdrawalsRupees);
+  const totalRoundsPlayed = RingOfFutureEngine.getRoundCount();
+
   res.json({
     success: true,
     data: {
-      totalActivePlayers: 1,
-      netHouseProfitRupees: 18450.00,
-      totalRoundsPlayed: 8940,
+      totalActivePlayers: users.length,
+      netHouseProfitRupees,
+      totalRoundsPlayed,
       rtpVerifiedPercent: config.rtpTargetPercent
     }
   });
+});
+
+adminRouter.get('/users', (req: Request, res: Response) => {
+  const users = AuthService.getAllUsers();
+  res.json({ success: true, data: users });
 });
 
 // Admin Deposit Queue & Action APIs

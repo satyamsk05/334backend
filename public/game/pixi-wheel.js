@@ -5,7 +5,7 @@
 
 (function () {
   const urlParams = new URLSearchParams(window.location.search);
-  const userId = urlParams.get('userId') || 'USR-304';
+  const userId = urlParams.get('userId') || '';
 
   let selectedChipRupees = 10;
   let currentPhase = 'BETTING';

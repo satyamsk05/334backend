@@ -25,10 +25,6 @@ export class WalletLedger {
     return WalletService.creditDeposit(userId, amountPaise, utr || `DEP-${Date.now()}`, 'Cash Deposit');
   }
 
-  // Alias for backward compatibility if called as addDemoCash
-  public static addDemoCash(userId: string, amountPaise: number, utr: string): WalletBalance {
-    return WalletLedger.addDepositCash(userId, amountPaise, utr);
-  }
 
   public static requestWithdrawal(userId: string, amountPaise: number, upiId: string): { success: boolean; message: string } {
     const minPaise = 2500;   // ₹25

@@ -76,11 +76,11 @@ export function getAdminDashboardHtml(): string {
             </div>
             <div class="card">
                 <div class="title">ACTIVE PLAYERS</div>
-                <div class="value green" id="activePlayers">1 Live 🟢</div>
+                <div class="value green" id="activePlayers">0 Live 🟢</div>
             </div>
             <div class="card">
                 <div class="title">NET HOUSE PROFIT</div>
-                <div class="value gold" id="houseProfit">₹18,450.00</div>
+                <div class="value gold" id="houseProfit">₹0.00</div>
             </div>
         </div>
 
@@ -132,29 +132,24 @@ export function getAdminDashboardHtml(): string {
             </table>
         </div>
 
-        <!-- 3. USER BALANCES -->
-        <div class="section-title">👥 Registered Users & Live Balances</div>
+        <!-- 3. LIVE REGISTERED PLAYERS -->
+        <div class="section-title">
+            <span>👥 Real Players Ledger</span>
+            <span class="badge-success" id="playerCountBadge">0 Registered</span>
+        </div>
         <div class="table-container">
             <table>
                 <thead>
                     <tr>
                         <th>User ID</th>
                         <th>Name</th>
-                        <th>Deposit Balance</th>
-                        <th>Winning Balance</th>
-                        <th>Bonus Balance</th>
-                        <th>Total Balance</th>
+                        <th>Phone</th>
+                        <th>Registered Date</th>
+                        <th>Status</th>
                     </tr>
                 </thead>
                 <tbody id="userTableBody">
-                    <tr>
-                        <td>USR-304</td>
-                        <td>Satyam Kumar</td>
-                        <td>₹500.00</td>
-                        <td>₹1,250.00</td>
-                        <td>₹100.00</td>
-                        <td style="color: #FFD700; font-weight: 700;">₹1,850.00</td>
-                    </tr>
+                    <tr><td colspan="5" style="text-align: center; color: #9CA3AF;">No players registered yet</td></tr>
                 </tbody>
             </table>
         </div>
@@ -173,15 +168,17 @@ export function getAdminDashboardHtml(): string {
 
         async function fetchDashboardData() {
             try {
+                const headers = { 'x-admin-secret': adminSecret };
+
                 // Fetch Analytics
-                const res = await fetch('/api/v1/admin/analytics?secret=' + encodeURIComponent(adminSecret));
+                const res = await fetch('/api/v1/admin/analytics', { headers });
                 const data = await res.json();
                 if (data.success) {
                     document.getElementById('loginSection').style.display = 'none';
                     document.getElementById('dashboardSection').style.display = 'block';
                     
-                    document.getElementById('activePlayers').innerText = (data.data.totalActivePlayers || 1) + ' Live 🟢';
-                    document.getElementById('houseProfit').innerText = '₹' + (data.data.netHouseProfitRupees || 18450).toFixed(2);
+                    document.getElementById('activePlayers').innerText = (data.data.totalActivePlayers || 0) + ' Live 🟢';
+                    document.getElementById('houseProfit').innerText = '₹' + ((data.data.netHouseProfitRupees || 0)).toFixed(2);
                 } else {
                     document.getElementById('errorMsg').innerText = 'Invalid Admin Secret Key!';
                     document.getElementById('errorMsg').style.display = 'block';
@@ -189,21 +186,48 @@ export function getAdminDashboardHtml(): string {
                 }
 
                 // Fetch Pending Deposits
-                const depRes = await fetch('/api/v1/admin/deposits/pending?secret=' + encodeURIComponent(adminSecret));
+                const depRes = await fetch('/api/v1/admin/deposits/pending', { headers });
                 const depData = await depRes.json();
                 if (depData.success) {
                     renderDepositsTable(depData.data || []);
                 }
 
                 // Fetch Pending Withdrawals
-                const wdRes = await fetch('/api/v1/admin/withdrawals/pending?secret=' + encodeURIComponent(adminSecret));
+                const wdRes = await fetch('/api/v1/admin/withdrawals/pending', { headers });
                 const wdData = await wdRes.json();
                 if (wdData.success) {
                     renderWithdrawalsTable(wdData.data || []);
                 }
+
+                // Fetch Real Registered Users
+                const userRes = await fetch('/api/v1/admin/users', { headers });
+                const userData = await userRes.json();
+                if (userData.success) {
+                    renderUsersTable(userData.data || []);
+                }
             } catch (e) {
                 console.error(e);
             }
+        }
+
+        function renderUsersTable(users) {
+            const tbody = document.getElementById('userTableBody');
+            document.getElementById('playerCountBadge').innerText = (users ? users.length : 0) + ' Registered';
+
+            if (!users || users.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #9CA3AF;">No players registered yet</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = users.map(u => \`
+                <tr>
+                    <td style="font-family: monospace;">\${u.id || u.userId}</td>
+                    <td>\${u.name || 'Player'}</td>
+                    <td>\${u.phone || '-'}</td>
+                    <td>\${u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td>
+                    <td><span class="\${u.isBanned ? 'badge-danger' : 'badge-success'}">\${u.isBanned ? 'BANNED' : 'ACTIVE'}</span></td>
+                </tr>
+            \`).join('');
         }
 
         function renderDepositsTable(deposits) {
@@ -261,9 +285,12 @@ export function getAdminDashboardHtml(): string {
         async function handleDepositAction(depositId, action) {
             if (!confirm('Are you sure you want to ' + action + ' deposit ' + depositId + '?')) return;
             try {
-                const res = await fetch('/api/v1/admin/deposits/action?secret=' + encodeURIComponent(adminSecret), {
+                const res = await fetch('/api/v1/admin/deposits/action', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'x-admin-secret': adminSecret
+                    },
                     body: JSON.stringify({ depositId, action })
                 });
                 const data = await res.json();
@@ -277,9 +304,12 @@ export function getAdminDashboardHtml(): string {
         async function handleWithdrawalAction(withdrawalId, action) {
             if (!confirm('Are you sure you want to ' + action + ' withdrawal ' + withdrawalId + '?')) return;
             try {
-                const res = await fetch('/api/v1/admin/withdrawals/action?secret=' + encodeURIComponent(adminSecret), {
+                const res = await fetch('/api/v1/admin/withdrawals/action', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'x-admin-secret': adminSecret
+                    },
                     body: JSON.stringify({ withdrawalId, action })
                 });
                 const data = await res.json();
