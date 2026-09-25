@@ -171,7 +171,8 @@ export class AdminController {
 
       const dataQuery = `
         SELECT 
-          u.id, u.username, u.phone, u.avatar_path, u.is_blocked, u.created_at, u.last_sign_in_at,
+          u.id, u.username, u.phone, u.avatar_path, u.is_blocked, u.created_at,
+          COALESCE(u.last_sign_in_at, u.created_at) as last_sign_in_at,
           COALESCE(w.deposit_balance, 0) as deposit_paise,
           COALESCE(w.winnings_balance, 0) as winning_paise,
           COALESCE(w.rewards_balance, 0) as bonus_paise,
@@ -205,9 +206,16 @@ export class AdminController {
           phone: u.phone,
           avatarPath: u.avatar_path,
           isBanned: Boolean(u.is_blocked),
+          is_blocked: Boolean(u.is_blocked),
           status: u.is_blocked ? 'BANNED' : 'ACTIVE',
           createdAt: u.created_at,
+          created_at: u.created_at,
           lastActive: u.last_sign_in_at || u.created_at,
+          last_sign_in_at: u.last_sign_in_at || u.created_at,
+          deposit_balance: u.deposit_paise,
+          winnings_balance: u.winning_paise,
+          rewards_balance: u.bonus_paise,
+          available_balance: u.total_paise,
           balance: {
             depositPaise: Number(u.deposit_paise),
             winningPaise: Number(u.winning_paise),
@@ -218,6 +226,7 @@ export class AdminController {
           totalWithdrawalsPaise: Number(u.total_withdrawals_paise),
           totalBets: Number(u.total_bets_count)
         })),
+        total: totalCount,
         pagination: {
           page,
           limit,

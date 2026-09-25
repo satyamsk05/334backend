@@ -53,7 +53,12 @@ export class AdminSchema {
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
 
-      -- 5. Extend games table with columns if missing
+      -- 5. Extend users table with columns if missing
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS last_sign_in_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_path VARCHAR(256);
+
+      -- 6. Extend games table with columns if missing
       ALTER TABLE games ADD COLUMN IF NOT EXISTS version VARCHAR(32) DEFAULT '1.0.0';
       ALTER TABLE games ADD COLUMN IF NOT EXISTS display_order INT DEFAULT 0;
       ALTER TABLE games ADD COLUMN IF NOT EXISTS config JSONB DEFAULT '{}'::jsonb;
