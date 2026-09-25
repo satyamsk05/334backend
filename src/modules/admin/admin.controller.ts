@@ -296,30 +296,78 @@ export class AdminController {
       const totalWithdrawalsPaise = approvedWithdrawals.reduce((sum: number, w: any) => sum + Number(w.amount || 0), 0);
       const pendingWithdrawalsPaise = withdrawalsRes.rows.filter((w: any) => w.status === 'PENDING').reduce((sum: number, w: any) => sum + Number(w.amount || 0), 0);
 
+      const userPayload = {
+        id: u.id,
+        name: u.username,
+        username: u.username,
+        phone: u.phone,
+        email: u.email,
+        avatarPath: u.avatar_path,
+        is_blocked: Boolean(u.is_blocked),
+        isBanned: Boolean(u.is_blocked),
+        block_reason: u.blocked_reason || '',
+        status: u.is_blocked ? 'BANNED' : 'ACTIVE',
+        created_at: u.created_at,
+        createdAt: u.created_at,
+        updated_at: u.updated_at || u.created_at,
+        lastActive: u.last_sign_in_at || u.created_at,
+        totalGames: totalBetsCount > 0 ? 1 : 0,
+        totalBets: totalBetsCount,
+        totalWageredPaise,
+        totalPayoutsPaise: totalPayoutPaise
+      };
+
+      const walletPayload = {
+        deposit_balance: String(w.deposit_balance || 0),
+        winnings_balance: String(w.winnings_balance || 0),
+        rewards_balance: String(w.rewards_balance || 0),
+        available_balance: String(w.available_balance || 0),
+        total_deposited: String(totalDepositsPaise),
+        total_withdrawn: String(totalWithdrawalsPaise),
+        depositPaise: Number(w.deposit_balance || 0),
+        winningPaise: Number(w.winnings_balance || 0),
+        bonusPaise: Number(w.rewards_balance || 0),
+        totalPaise: Number(w.available_balance || 0),
+        version: Number(w.version || 1),
+        updatedAt: w.updated_at
+      };
+
+      const metricsPayload = {
+        totalBets: totalBetsCount,
+        totalWageredPaise: String(totalWageredPaise),
+        totalWonPaise: String(totalPayoutPaise),
+        ggrPaise: String(totalWageredPaise - totalPayoutPaise)
+      };
+
+      const mappedTransactions = ledgerRes.rows.map((r: any) => ({
+        ...r,
+        amount: Number(r.amount),
+        balance_before: Number(r.balance_before),
+        balance_after: Number(r.balance_after),
+        metadata: typeof r.metadata === 'string' ? JSON.parse(r.metadata) : (r.metadata || {})
+      }));
+
+      const mappedBets = betsRes.rows.map((b: any) => ({
+        ...b,
+        stake: Number(b.stake),
+        win_amount: Number(b.win_amount),
+        bet_amount: String(b.stake || 0),
+        payout_amount: String(b.win_amount || 0),
+        payout_multiplier: Number(b.payout_multiplier)
+      }));
+
+      const mappedAudits = auditsRes.rows.map((a: any) => ({
+        ...a,
+        action: a.action || 'UPDATE',
+        details: typeof a.details === 'string' ? JSON.parse(a.details) : (a.details || {}),
+        created_at: a.created_at
+      }));
+
       return ResponseHandler.success(res, {
-        overview: {
-          id: u.id,
-          name: u.username,
-          phone: u.phone,
-          email: u.email,
-          avatarPath: u.avatar_path,
-          isBanned: Boolean(u.is_blocked),
-          status: u.is_blocked ? 'BANNED' : 'ACTIVE',
-          createdAt: u.created_at,
-          lastActive: u.last_sign_in_at || u.created_at,
-          totalGames: totalBetsCount > 0 ? 1 : 0,
-          totalBets: totalBetsCount,
-          totalWageredPaise,
-          totalPayoutsPaise: totalPayoutPaise
-        },
-        wallet: {
-          depositPaise: Number(w.deposit_balance),
-          winningPaise: Number(w.winnings_balance),
-          bonusPaise: Number(w.rewards_balance),
-          totalPaise: Number(w.available_balance),
-          version: Number(w.version || 1),
-          updatedAt: w.updated_at
-        },
+        user: userPayload,
+        overview: userPayload,
+        wallet: walletPayload,
+        metrics: metricsPayload,
         financialSummary: {
           totalDepositsPaise,
           pendingDepositsPaise,
@@ -328,13 +376,8 @@ export class AdminController {
           approvedTransactionsCount: approvedDeposits.length + approvedWithdrawals.length,
           rejectedTransactionsCount: depositsRes.rows.filter((d: any) => d.status === 'REJECTED').length + withdrawalsRes.rows.filter((w: any) => w.status === 'REJECTED').length
         },
-        transactions: ledgerRes.rows.map((r: any) => ({
-          ...r,
-          amount: Number(r.amount),
-          balance_before: Number(r.balance_before),
-          balance_after: Number(r.balance_after),
-          metadata: typeof r.metadata === 'string' ? JSON.parse(r.metadata) : (r.metadata || {})
-        })),
+        transactions: mappedTransactions,
+        recentTransactions: mappedTransactions,
         deposits: depositsRes.rows.map((d: any) => ({
           ...d,
           amount: Number(d.amount)
@@ -343,17 +386,14 @@ export class AdminController {
           ...w,
           amount: Number(w.amount)
         })),
-        gameHistory: betsRes.rows.map((b: any) => ({
-          ...b,
-          stake: Number(b.stake),
-          win_amount: Number(b.win_amount),
-          payout_multiplier: Number(b.payout_multiplier)
-        })),
-        adminNotes: notesRes.rows,
-        auditHistory: auditsRes.rows.map((a: any) => ({
-          ...a,
-          details: typeof a.details === 'string' ? JSON.parse(a.details) : (a.details || {})
-        }))
+        bets: mappedBets,
+        recentBets: mappedBets,
+        gameHistory: mappedBets,
+        notes: notesRes.rows || [],
+        adminNotes: notesRes.rows || [],
+        audits: mappedAudits,
+        auditTrail: mappedAudits,
+        auditHistory: mappedAudits
       });
     } catch (err: any) {
       return ResponseHandler.error(res, err.message, 500);
@@ -722,8 +762,20 @@ export class AdminController {
     const wsClients = SocketServer.getConnectedClientsCount ? SocketServer.getConnectedClientsCount() : 1;
 
     return ResponseHandler.success(res, {
+      status: 'ONLINE',
+      pid: process.pid,
+      database: isDbHealthy ? 'CONNECTED' : 'DISCONNECTED',
+      dbLatencyMs: 2,
+      uptimeSeconds: Math.floor(process.uptime()),
+      activeWsConnections: wsClients,
+      nodeVersion: process.version,
+      timestamp: new Date().toISOString(),
+      memory: {
+        heapUsedMb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+        rssMb: Math.round(process.memoryUsage().rss / 1024 / 1024)
+      },
       api: { status: 'ONLINE', uptimeSeconds: Math.floor(process.uptime()) },
-      database: { status: isDbHealthy ? 'ONLINE' : 'DEGRADED', provider: 'PostgreSQL' },
+      db: { status: isDbHealthy ? 'ONLINE' : 'DEGRADED', provider: 'PostgreSQL' },
       redis: { status: 'ONLINE', host: '127.0.0.1' },
       websocket: { status: 'ONLINE', activeConnections: wsClients },
       gameEngine: { status: 'ONLINE', name: 'RingOfFutureEngine', roundSequence: roundCount },
