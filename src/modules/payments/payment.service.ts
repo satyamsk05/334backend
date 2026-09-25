@@ -55,6 +55,10 @@ export class PaymentService {
     return FinancialService.getAllWithdrawals();
   }
 
+  public static processWithdrawal(withdrawalId: string): { success: boolean; message: string; record?: WithdrawalRecord } {
+    return FinancialService.processWithdrawal(withdrawalId);
+  }
+
   public static approveWithdrawal(withdrawalId: string): { success: boolean; message: string; record?: WithdrawalRecord } {
     return FinancialService.approveWithdrawal(withdrawalId);
   }

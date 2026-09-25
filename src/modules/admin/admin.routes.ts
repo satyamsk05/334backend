@@ -58,13 +58,15 @@ adminRoutes.get('/withdrawals', requirePermission('payments.read'), WithdrawCont
 adminRoutes.get('/withdrawals/pending', requirePermission('payments.read'), (req: Request, res: Response) => {
   return WithdrawController.getWithdrawals(req, res);
 });
+adminRoutes.post('/withdrawals/process', requirePermission('payments.approve'), WithdrawController.process);
 adminRoutes.post('/withdrawals/approve', requirePermission('payments.approve'), WithdrawController.approve);
 adminRoutes.post('/withdrawals/reject', requirePermission('payments.approve'), WithdrawController.reject);
 adminRoutes.post('/withdrawals/action', requirePermission('payments.approve'), async (req: Request, res: Response) => {
   const { action } = req.body;
+  if (action === 'PROCESS') return WithdrawController.process(req, res);
   if (action === 'APPROVE') return WithdrawController.approve(req, res);
   if (action === 'REJECT') return WithdrawController.reject(req, res);
-  return res.status(400).json({ success: false, message: 'Invalid action (must be APPROVE or REJECT)' });
+  return res.status(400).json({ success: false, message: 'Invalid action (must be PROCESS, APPROVE or REJECT)' });
 });
 
 // ==========================================

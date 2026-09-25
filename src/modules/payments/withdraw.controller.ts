@@ -26,6 +26,14 @@ export class WithdrawController {
     return ResponseHandler.success(res, records, 'Withdrawal requests retrieved');
   }
 
+  public static process(req: Request, res: Response) {
+    const { withdrawalId } = req.body;
+    if (!withdrawalId) return ResponseHandler.error(res, 'withdrawalId is required', 400);
+    const result = PaymentService.processWithdrawal(withdrawalId);
+    if (!result.success) return ResponseHandler.error(res, result.message, 400);
+    return ResponseHandler.success(res, result.record, result.message);
+  }
+
   public static approve(req: Request, res: Response) {
     const { withdrawalId } = req.body;
     if (!withdrawalId) return ResponseHandler.error(res, 'withdrawalId is required', 400);

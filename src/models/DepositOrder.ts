@@ -6,6 +6,7 @@ export enum DepositStatus {
 
 export enum WithdrawalStatus {
   PENDING = 'PENDING',
+  PROCESSING = 'PROCESSING',
   APPROVED = 'APPROVED',
   REJECTED = 'REJECTED',
   RISK_LOCKED = 'RISK_LOCKED'
@@ -51,5 +52,5 @@ export interface AdminDepositActionRequest {
 
 export interface AdminWithdrawalActionRequest {
   withdrawalId: string;
-  action: 'APPROVE' | 'REJECT';
+  action: 'PROCESS' | 'APPROVE' | 'REJECT';
 }

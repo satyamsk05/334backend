@@ -16,6 +16,7 @@ paymentRoutes.post('/deposit/approve', authenticateAdmin, DepositController.appr
 paymentRoutes.post('/deposit/reject', authenticateAdmin, DepositController.reject);
 
 paymentRoutes.get('/withdrawals', authenticateAdmin, WithdrawController.getWithdrawals);
+paymentRoutes.post('/withdraw/process', authenticateAdmin, WithdrawController.process);
 paymentRoutes.post('/withdraw/approve', authenticateAdmin, WithdrawController.approve);
 paymentRoutes.post('/withdraw/reject', authenticateAdmin, WithdrawController.reject);
 

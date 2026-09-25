@@ -272,11 +272,41 @@ export class FinancialService {
       .sort((a, b) => b.createdAt - a.createdAt);
   }
 
-  public static approveWithdrawal(withdrawalId: string): { success: boolean; message: string; record?: WithdrawalRecord } {
+  public static processWithdrawal(withdrawalId: string): { success: boolean; message: string; record?: WithdrawalRecord } {
     const record = FinancialService.withdrawalRecords.get(withdrawalId);
     if (!record) return { success: false, message: 'Withdrawal record not found' };
 
     if (record.status !== WithdrawalStatus.PENDING) {
+      return { success: false, message: `Withdrawal cannot be moved to processing from ${record.status}` };
+    }
+
+    record.status = WithdrawalStatus.PROCESSING;
+    record.updatedAt = Date.now();
+    FinancialService.withdrawalRecords.set(withdrawalId, record);
+    FinancialService.persist();
+
+    try {
+      SocketServer.emitToUser(record.userId, 'WITHDRAWAL_STATUS', {
+        withdrawalId: record.withdrawalId,
+        status: WithdrawalStatus.PROCESSING,
+        amountRupees: record.amountRupees
+      });
+    } catch (e) {
+      console.error('Socket error on withdrawal processing:', e);
+    }
+
+    TelegramBotService.sendAlert(
+      `⏳ *Withdrawal In Processing*\nID: \`${withdrawalId}\`\nUser: \`${record.userId}\`\nAmount: ₹${record.amountRupees.toFixed(2)}\nUPI: \`${record.upiId}\``
+    );
+
+    return { success: true, message: `Withdrawal ${withdrawalId} moved to PROCESSING!`, record };
+  }
+
+  public static approveWithdrawal(withdrawalId: string): { success: boolean; message: string; record?: WithdrawalRecord } {
+    const record = FinancialService.withdrawalRecords.get(withdrawalId);
+    if (!record) return { success: false, message: 'Withdrawal record not found' };
+
+    if (record.status !== WithdrawalStatus.PENDING && record.status !== WithdrawalStatus.PROCESSING) {
       return { success: false, message: `Withdrawal is already ${record.status}` };
     }
 
@@ -284,6 +314,16 @@ export class FinancialService {
     record.updatedAt = Date.now();
     FinancialService.withdrawalRecords.set(withdrawalId, record);
     FinancialService.persist();
+
+    try {
+      SocketServer.emitToUser(record.userId, 'WITHDRAWAL_STATUS', {
+        withdrawalId: record.withdrawalId,
+        status: WithdrawalStatus.APPROVED,
+        amountRupees: record.amountRupees
+      });
+    } catch (e) {
+      console.error('Socket error on withdrawal approval:', e);
+    }
 
     TelegramBotService.sendAlert(
       `✅ *Withdrawal Approved & Paid*\nID: \`${withdrawalId}\`\nUser: \`${record.userId}\`\nAmount: ₹${record.amountRupees.toFixed(2)}\nUPI: \`${record.upiId}\``
@@ -296,7 +336,7 @@ export class FinancialService {
     const record = FinancialService.withdrawalRecords.get(withdrawalId);
     if (!record) return { success: false, message: 'Withdrawal request not found' };
 
-    if (record.status !== WithdrawalStatus.PENDING) {
+    if (record.status !== WithdrawalStatus.PENDING && record.status !== WithdrawalStatus.PROCESSING) {
       return { success: false, message: `Withdrawal is already ${record.status}` };
     }
 
@@ -306,7 +346,30 @@ export class FinancialService {
     FinancialService.persist();
 
     // Refund debited winnings back to user atomically in PostgreSQL
-    await WalletService.refundWithdrawal(record.userId, record.amountPaise, withdrawalId);
+    const updatedWallet = await WalletService.refundWithdrawal(record.userId, record.amountPaise, withdrawalId);
+
+    try {
+      SocketServer.emitToUser(record.userId, 'WITHDRAWAL_STATUS', {
+        withdrawalId: record.withdrawalId,
+        status: WithdrawalStatus.REJECTED,
+        amountRupees: record.amountRupees
+      });
+      if (updatedWallet) {
+        SocketServer.emitToUser(record.userId, 'WALLET_UPDATE', {
+          userId: record.userId,
+          depositPaise: updatedWallet.depositPaise,
+          winningPaise: updatedWallet.winningPaise,
+          bonusPaise: updatedWallet.bonusPaise,
+          totalPaise: updatedWallet.totalPaise,
+          depositRupees: updatedWallet.depositPaise / 100,
+          winningRupees: updatedWallet.winningPaise / 100,
+          bonusRupees: updatedWallet.bonusPaise / 100,
+          totalRupees: updatedWallet.totalPaise / 100
+        });
+      }
+    } catch (e) {
+      console.error('Socket error on withdrawal rejection:', e);
+    }
 
     TelegramBotService.sendAlert(
       `❌ *Withdrawal Rejected & Refunded*\nID: \`${withdrawalId}\`\nUser: \`${record.userId}\`\nAmount: ₹${record.amountRupees.toFixed(2)}`
