@@ -7,6 +7,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "db:reset": "ts-node src/scripts/resetDatabase.ts",
     "test": "ts-node tests/wallet.persistence.test.ts"
   },
   "dependencies": {
