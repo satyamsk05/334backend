@@ -5,6 +5,10 @@ let pgPool: Pool | null = null;
 
 const isProduction = envConfig.nodeEnv === 'production';
 const rejectUnauthorized = process.env.PGSSL_REJECT_UNAUTHORIZED !== 'false';
+const isSupabase = envConfig.databaseUrl.includes('supabase.com');
+const sslConfig = isSupabase
+  ? { rejectUnauthorized: false }
+  : (isProduction ? { rejectUnauthorized } : false);
 
 export class DatabaseConfig {
   public static getPool(): Pool | null {
@@ -12,7 +16,7 @@ export class DatabaseConfig {
       try {
         pgPool = new Pool({
           connectionString: envConfig.databaseUrl,
-          ssl: isProduction ? { rejectUnauthorized } : false,
+          ssl: sslConfig,
           max: Number(process.env.DB_POOL_MAX || 10),
           idleTimeoutMillis: Number(process.env.DB_IDLE_TIMEOUT_MS || 30000),
           connectionTimeoutMillis: Number(process.env.DB_CONNECTION_TIMEOUT_MS || 10000)

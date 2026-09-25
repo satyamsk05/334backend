@@ -4,13 +4,17 @@ import { TelegramBotService } from '../services/TelegramBotService';
 
 export const walletRouter = Router();
 
-walletRouter.get('/transactions', (req: Request, res: Response) => {
+walletRouter.get('/transactions', async (req: Request, res: Response) => {
   const userId = req.query.userId as string;
   if (!userId || !userId.trim()) {
     return res.status(400).json({ success: false, message: 'userId query parameter is required' });
   }
-  const transactions = WalletLedger.getTransactions(userId);
-  res.json({ success: true, data: transactions });
+  try {
+    const transactions = await WalletLedger.getTransactions(userId);
+    res.json({ success: true, data: transactions });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message || 'Failed to fetch transactions' });
+  }
 });
 
 walletRouter.post('/deposit', async (req: Request, res: Response) => {
@@ -24,16 +28,20 @@ walletRouter.post('/deposit', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, message: 'Invalid deposit amount' });
   }
 
-  const updatedBalance = WalletLedger.addDepositCash(userId, paise, utr);
+  try {
+    const updatedBalance = await WalletLedger.addDepositCash(userId, paise, utr);
 
-  // Send Telegram notification
-  await TelegramBotService.sendAlert(`💰 *Deposit Request Submitted*\nUser: \`${userId}\`\nAmount: ₹${(paise / 100).toFixed(2)}\nUTR: \`${utr || 'N/A'}\``);
+    // Send Telegram notification
+    await TelegramBotService.sendAlert(`💰 *Deposit Request Submitted*\nUser: \`${userId}\`\nAmount: ₹${(paise / 100).toFixed(2)}\nUTR: \`${utr || 'N/A'}\``);
 
-  res.json({
-    success: true,
-    message: `₹${(paise / 100).toFixed(2)} added to wallet successfully!`,
-    data: { walletBalance: updatedBalance }
-  });
+    res.json({
+      success: true,
+      message: `₹${(paise / 100).toFixed(2)} added to wallet successfully!`,
+      data: { walletBalance: updatedBalance }
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message || 'Deposit failed' });
+  }
 });
 
 walletRouter.post('/withdraw', async (req: Request, res: Response) => {
@@ -47,18 +55,22 @@ walletRouter.post('/withdraw', async (req: Request, res: Response) => {
     return res.status(400).json({ success: false, message: 'Please enter a valid UPI ID' });
   }
 
-  const result = WalletLedger.requestWithdrawal(userId, paise, upiId);
-  if (!result.success) {
-    return res.status(400).json({ success: false, message: result.message });
+  try {
+    const result = await WalletLedger.requestWithdrawal(userId, paise, upiId);
+    if (!result.success) {
+      return res.status(400).json({ success: false, message: result.message });
+    }
+
+    // Send Telegram notification
+    await TelegramBotService.sendAlert(`💸 *Withdrawal Requested*\nUser: \`${userId}\`\nAmount: ₹${(paise / 100).toFixed(2)}\nUPI ID: \`${upiId}\``);
+
+    const updatedBalance = await WalletLedger.getUserBalance(userId);
+    res.json({
+      success: true,
+      message: result.message,
+      data: { walletBalance: updatedBalance }
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message || 'Withdrawal failed' });
   }
-
-  // Send Telegram notification
-  await TelegramBotService.sendAlert(`💸 *Withdrawal Requested*\nUser: \`${userId}\`\nAmount: ₹${(paise / 100).toFixed(2)}\nUPI ID: \`${upiId}\``);
-
-  const updatedBalance = WalletLedger.getUserBalance(userId);
-  res.json({
-    success: true,
-    message: result.message,
-    data: { walletBalance: updatedBalance }
-  });
 });

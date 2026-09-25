@@ -4,14 +4,14 @@ import { WalletLedger } from '../services/WalletLedger';
 
 export const gamePageRouter = Router();
 
-gamePageRouter.get('/api/v1/ring-of-future/state', (req: Request, res: Response) => {
+gamePageRouter.get('/api/v1/ring-of-future/state', async (req: Request, res: Response) => {
   const userId = (req.query.userId as string) || '';
   const state = RingOfFutureEngine.getSnapshotForUser(userId);
-  const wallet = userId ? WalletLedger.getUserBalance(userId) : { depositPaise: 0, winningPaise: 0, bonusPaise: 0, totalPaise: 0 };
+  const wallet = userId ? await WalletLedger.getUserBalance(userId) : { depositPaise: 0, winningPaise: 0, bonusPaise: 0, totalPaise: 0 };
   res.json({ success: true, data: { gameState: state, wallet } });
 });
 
-gamePageRouter.post('/api/v1/ring-of-future/bet', (req: Request, res: Response) => {
+gamePageRouter.post('/api/v1/ring-of-future/bet', async (req: Request, res: Response) => {
   const { userId, multiplierType, amountRupees } = req.body;
   if (!userId || typeof userId !== 'string' || !userId.trim()) {
     return res.status(400).json({ success: false, message: 'Valid userId is required' });
@@ -22,14 +22,14 @@ gamePageRouter.post('/api/v1/ring-of-future/bet', (req: Request, res: Response) 
   }
 
   const amountPaise = Math.round(num * 100);
-  const result = RingOfFutureEngine.placeBet(userId, multiplierType as MultiplierType, amountPaise);
+  const result = await RingOfFutureEngine.placeBet(userId, multiplierType as MultiplierType, amountPaise);
 
   if (!result.success) {
     return res.status(400).json(result);
   }
 
   const state = RingOfFutureEngine.getSnapshotForUser(userId);
-  const wallet = WalletLedger.getUserBalance(userId);
+  const wallet = await WalletLedger.getUserBalance(userId);
 
   res.json({
     success: true,
@@ -38,13 +38,13 @@ gamePageRouter.post('/api/v1/ring-of-future/bet', (req: Request, res: Response) 
   });
 });
 
-gamePageRouter.get('/game/ring-of-future', (req: Request, res: Response) => {
+gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) => {
   const rawUserId = (req.query.userId as string);
   if (!rawUserId || !/^[a-zA-Z0-9_-]+$/.test(rawUserId)) {
     return res.status(400).send('<div style="padding: 20px; font-family: sans-serif; text-align: center; color: red;"><h3>Error: Valid userId parameter is required to access Ring of Future.</h3></div>');
   }
   const userId = rawUserId;
-  const wallet = WalletLedger.getUserBalance(userId);
+  const wallet = await WalletLedger.getUserBalance(userId);
   const initialState = RingOfFutureEngine.getSnapshotForUser(userId);
 
   const html = `

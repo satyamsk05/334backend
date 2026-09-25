@@ -73,14 +73,14 @@ adminRouter.get('/deposits/pending', (req: Request, res: Response) => {
   res.json({ success: true, data: pending });
 });
 
-adminRouter.post('/deposits/action', (req: Request, res: Response) => {
+adminRouter.post('/deposits/action', async (req: Request, res: Response) => {
   const { depositId, action } = req.body;
   if (!depositId || !action) {
     return res.status(400).json({ success: false, message: 'depositId and action (APPROVE/REJECT) required' });
   }
 
   if (action === 'APPROVE') {
-    const result = FinancialService.approveDeposit(depositId);
+    const result = await FinancialService.approveDeposit(depositId);
     return res.json(result);
   } else if (action === 'REJECT') {
     const result = FinancialService.rejectDeposit(depositId);
@@ -96,7 +96,7 @@ adminRouter.get('/withdrawals/pending', (req: Request, res: Response) => {
   res.json({ success: true, data: pending });
 });
 
-adminRouter.post('/withdrawals/action', (req: Request, res: Response) => {
+adminRouter.post('/withdrawals/action', async (req: Request, res: Response) => {
   const { withdrawalId, action } = req.body;
   if (!withdrawalId || !action) {
     return res.status(400).json({ success: false, message: 'withdrawalId and action (APPROVE/REJECT) required' });
@@ -106,7 +106,7 @@ adminRouter.post('/withdrawals/action', (req: Request, res: Response) => {
     const result = FinancialService.approveWithdrawal(withdrawalId);
     return res.json(result);
   } else if (action === 'REJECT') {
-    const result = FinancialService.rejectWithdrawal(withdrawalId);
+    const result = await FinancialService.rejectWithdrawal(withdrawalId);
     return res.json(result);
   }
 

@@ -4,7 +4,7 @@ import { WalletValidator } from '../../validators/wallet.validator';
 import { ResponseHandler } from '../../utils/responseHandler';
 
 export class WithdrawController {
-  public static request(req: Request, res: Response) {
+  public static async request(req: Request, res: Response) {
     const validation = WalletValidator.validateWithdrawal(req.body);
     if (!validation.valid) {
       return ResponseHandler.error(res, validation.message || 'Invalid withdrawal parameters', 400);
@@ -14,7 +14,7 @@ export class WithdrawController {
       return ResponseHandler.error(res, 'Unauthorized: Valid user token required', 401);
     }
     const { amountRupees, upiId } = req.body;
-    const result = PaymentService.requestWithdrawal(authenticatedUserId, amountRupees, upiId);
+    const result = await PaymentService.requestWithdrawal(authenticatedUserId, amountRupees, upiId);
     if (!result.success) {
       return ResponseHandler.error(res, result.message, 400);
     }
@@ -34,10 +34,10 @@ export class WithdrawController {
     return ResponseHandler.success(res, result.record, result.message);
   }
 
-  public static reject(req: Request, res: Response) {
+  public static async reject(req: Request, res: Response) {
     const { withdrawalId } = req.body;
     if (!withdrawalId) return ResponseHandler.error(res, 'withdrawalId is required', 400);
-    const result = PaymentService.rejectWithdrawal(withdrawalId);
+    const result = await PaymentService.rejectWithdrawal(withdrawalId);
     if (!result.success) return ResponseHandler.error(res, result.message, 400);
     return ResponseHandler.success(res, result.record, result.message);
   }

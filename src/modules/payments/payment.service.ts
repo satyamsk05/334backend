@@ -28,8 +28,8 @@ export class PaymentService {
     return FinancialService.getAllDeposits();
   }
 
-  public static approveDeposit(depositId: string): { success: boolean; message: string; record?: DepositRecord } {
-    const res = FinancialService.approveDeposit(depositId);
+  public static async approveDeposit(depositId: string): Promise<{ success: boolean; message: string; record?: DepositRecord }> {
+    const res = await FinancialService.approveDeposit(depositId);
     return {
       success: res.success,
       message: res.message,
@@ -46,9 +46,9 @@ export class PaymentService {
     };
   }
 
-  public static requestWithdrawal(userId: string, amountRupees: number, upiId: string): { success: boolean; message: string; record?: WithdrawalRecord } {
+  public static async requestWithdrawal(userId: string, amountRupees: number, upiId: string): Promise<{ success: boolean; message: string; record?: WithdrawalRecord }> {
     AuthService.ensureUserExists(userId);
-    return FinancialService.requestWithdrawal(userId, amountRupees, upiId);
+    return await FinancialService.requestWithdrawal(userId, amountRupees, upiId);
   }
 
   public static getAllWithdrawals(): WithdrawalRecord[] {
@@ -59,7 +59,7 @@ export class PaymentService {
     return FinancialService.approveWithdrawal(withdrawalId);
   }
 
-  public static rejectWithdrawal(withdrawalId: string): { success: boolean; message: string; record?: WithdrawalRecord } {
-    return FinancialService.rejectWithdrawal(withdrawalId);
+  public static async rejectWithdrawal(withdrawalId: string): Promise<{ success: boolean; message: string; record?: WithdrawalRecord }> {
+    return await FinancialService.rejectWithdrawal(withdrawalId);
   }
 }

@@ -35,10 +35,10 @@ export class DepositController {
     return ResponseHandler.success(res, deposits, 'Deposits retrieved');
   }
 
-  public static approve(req: Request, res: Response) {
+  public static async approve(req: Request, res: Response) {
     const { depositId } = req.body;
     if (!depositId) return ResponseHandler.error(res, 'depositId is required', 400);
-    const result = PaymentService.approveDeposit(depositId);
+    const result = await PaymentService.approveDeposit(depositId);
     if (!result.success) return ResponseHandler.error(res, result.message, 400);
     return ResponseHandler.success(res, result.record, result.message);
   }

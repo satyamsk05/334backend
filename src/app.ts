@@ -5,6 +5,7 @@ import { authRoutes } from './modules/auth/auth.routes';
 import { walletRoutes } from './modules/wallet/wallet.routes';
 import { paymentRoutes } from './modules/payments/payment.routes';
 import { userRoutes } from './modules/users/user.routes';
+import { adminRoutes } from './modules/admin/admin.routes';
 import { adminRouter } from './routes/admin';
 import { gamePageRouter } from './routes/gamePage';
 import { depositPageRouter } from './routes/depositPage';
@@ -106,7 +107,7 @@ export function createApp() {
   app.use('/api/v1/payments', paymentRoutes);
   app.use('/api/v1/users', userRoutes);
   app.use('/admin', adminRouter);
-  app.use('/api/v1/admin', adminRouter);
+  app.use('/api/v1/admin', adminRoutes);
 
   // Web Game and Payment Webpages (Ring Of Future UI & UPI Pay QR)
   app.use(gamePageRouter);

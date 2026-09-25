@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { WalletLedger } from '../services/WalletLedger';
+import { WalletService } from '../modules/wallet/wallet.service';
 
 export enum RingPhase {
   BETTING = 'BETTING',
@@ -155,7 +155,11 @@ export class RingOfFutureEngine {
     }
   }
 
-  public static placeBet(userId: string, targetType: MultiplierType, amountPaise: number): { success: boolean; message: string; balance?: any } {
+  public static async placeBet(
+    userId: string,
+    targetType: MultiplierType,
+    amountPaise: number
+  ): Promise<{ success: boolean; message: string; balance?: any }> {
     if (RingOfFutureEngine.currentPhase !== RingPhase.BETTING) {
       return { success: false, message: 'Bets are locked for this round' };
     }
@@ -164,41 +168,24 @@ export class RingOfFutureEngine {
       return { success: false, message: 'Invalid bet amount' };
     }
 
-    const wallet = WalletLedger.getUserBalance(userId);
-    if (wallet.totalPaise < amountPaise) {
-      return { success: false, message: 'Insufficient balance' };
+    const roundId = `ROF-${RingOfFutureEngine.getRoundCount()}`;
+    const betRefId = `BET-${roundId}-${userId}-${Date.now()}`;
+    const idempKey = `idemp_bet_${roundId}_${userId}_${targetType}_${Date.now()}`;
+
+    const debitRes = await WalletService.debitBet(
+      userId,
+      amountPaise,
+      betRefId,
+      `Bet placed on ${targetType} (Round #${RingOfFutureEngine.getRoundCount()})`,
+      idempKey,
+      { roundId, targetType }
+    );
+
+    if (!debitRes.success) {
+      return { success: false, message: debitRes.message || 'Insufficient balance' };
     }
 
-    // Debit order: deposit -> winning -> bonus
-    let remaining = amountPaise;
-    let dep = wallet.depositPaise;
-    let win = wallet.winningPaise;
-    let bon = wallet.bonusPaise;
-
-    if (dep >= remaining) {
-      dep -= remaining;
-    } else {
-      remaining -= dep;
-      dep = 0;
-      if (win >= remaining) {
-        win -= remaining;
-      } else {
-        remaining -= win;
-        win = 0;
-        if (bon >= remaining) {
-          bon -= remaining;
-        } else {
-          return { success: false, message: 'Insufficient bucket funds' };
-        }
-      }
-    }
-
-    wallet.depositPaise = dep;
-    wallet.winningPaise = win;
-    wallet.bonusPaise = bon;
-    wallet.totalPaise = dep + win + bon;
-
-    // Track active user bets
+    // Track active user bets only after successful DB debit
     const userBets = RingOfFutureEngine.activeBetsMap.get(userId) || {
       grey2x: 0,
       purple3x: 0,
@@ -215,20 +202,16 @@ export class RingOfFutureEngine {
 
     RingOfFutureEngine.activeBetsMap.set(userId, userBets);
 
-    WalletLedger.recordTransaction(
-      userId,
-      'BET_PLACED',
-      amountPaise,
-      wallet.totalPaise,
-      `BET-${Date.now()}`,
-      `Bet placed on ${targetType}`
-    );
-
-    return { success: true, message: `Placed ₹${(amountPaise / 100).toFixed(2)} bet on ${targetType}`, balance: wallet };
+    return {
+      success: true,
+      message: `Placed ₹${(amountPaise / 100).toFixed(2)} bet on ${targetType}`,
+      balance: debitRes.newBalance
+    };
   }
 
   private static async processPayouts(): Promise<void> {
     const winnerSpec = WHEEL_32_SEGMENTS[RingOfFutureEngine.winningSegmentIndex];
+    const roundId = `ROF-${RingOfFutureEngine.getRoundCount()}`;
 
     for (const [userId, bets] of RingOfFutureEngine.activeBetsMap.entries()) {
       let betOnWinner = 0;
@@ -242,17 +225,21 @@ export class RingOfFutureEngine {
         const contractPaise = Math.round((betOnWinner * 98) / 100);
         const winPayoutPaise = Math.round(contractPaise * winnerSpec.multiplier);
 
-        const wallet = WalletLedger.getUserBalance(userId);
-        wallet.winningPaise += winPayoutPaise;
-        wallet.totalPaise = wallet.depositPaise + wallet.winningPaise + wallet.bonusPaise;
+        const refId = `WIN-${roundId}-${userId}`;
+        const idempKey = `idemp_win_${roundId}_${userId}`;
 
-        WalletLedger.recordTransaction(
+        await WalletService.creditWinnings(
           userId,
-          'WIN_PAYOUT',
           winPayoutPaise,
-          wallet.totalPaise,
-          `WIN-${Date.now()}`,
-          `Win Payout (${winnerSpec.type} ${winnerSpec.multiplier}x)`
+          refId,
+          `Win Payout (${winnerSpec.type} ${winnerSpec.multiplier}x)`,
+          idempKey,
+          {
+            roundId,
+            winningType: winnerSpec.type,
+            multiplier: winnerSpec.multiplier,
+            betOnWinner
+          }
         );
       }
     }

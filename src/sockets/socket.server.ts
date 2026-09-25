@@ -128,6 +128,10 @@ export class SocketServer {
     }
   }
 
+  public static getConnectedClientsCount(): number {
+    return SocketServer.clients.size;
+  }
+
   public static broadcast(event: string, data: unknown): void {
     if (!SocketServer.wss) return;
     const msg = JSON.stringify({ event, data });

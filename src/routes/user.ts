@@ -4,7 +4,7 @@ import { AuthService } from '../modules/auth/auth.service';
 
 export const userRouter = Router();
 
-userRouter.get('/profile', (req: Request, res: Response) => {
+userRouter.get('/profile', async (req: Request, res: Response) => {
   const userId = req.query.userId as string;
   if (!userId || !userId.trim()) {
     return res.status(400).json({ success: false, message: 'userId query parameter is required' });
@@ -15,7 +15,7 @@ userRouter.get('/profile', (req: Request, res: Response) => {
     return res.status(404).json({ success: false, message: 'User not found' });
   }
 
-  const balance = WalletLedger.getUserBalance(userId);
+  const balance = await WalletLedger.getUserBalance(userId);
 
   res.json({
     success: true,

@@ -6,7 +6,7 @@ import {
   WithdrawalRecord,
   WithdrawalStatus
 } from '../models/DepositOrder';
-import { WalletLedger } from './WalletLedger';
+import { WalletService } from '../modules/wallet/wallet.service';
 import { TelegramBotService } from './TelegramBotService';
 import { AuthService } from '../modules/auth/auth.service';
 import { SocketServer } from '../sockets/socket.server';
@@ -143,7 +143,7 @@ export class FinancialService {
       .sort((a, b) => b.createdAt - a.createdAt);
   }
 
-  public static approveDeposit(depositId: string): { success: boolean; message: string; order?: DepositOrder } {
+  public static async approveDeposit(depositId: string): Promise<{ success: boolean; message: string; order?: DepositOrder }> {
     const order = FinancialService.depositOrders.get(depositId);
     if (!order) return { success: false, message: 'Deposit order not found' };
 
@@ -156,12 +156,17 @@ export class FinancialService {
     FinancialService.depositOrders.set(depositId, order);
     FinancialService.persist();
 
-    // Credit user deposit balance in integer paise
-    WalletLedger.addDepositCash(order.userId, order.amountPaise, order.utr || order.depositId);
+    // Credit user deposit balance atomically in PostgreSQL
+    const updatedBalance = await WalletService.creditDeposit(
+      order.userId,
+      order.amountPaise,
+      order.utr || order.depositId,
+      'Deposit Approved',
+      order.depositId
+    );
 
     // Live sync over WebSockets to client app & webpage
     try {
-      const updatedBalance = WalletLedger.getUserBalance(order.userId);
       SocketServer.emitToUser(order.userId, 'WALLET_UPDATE', {
         userId: order.userId,
         depositPaise: updatedBalance.depositPaise,
@@ -214,7 +219,11 @@ export class FinancialService {
   }
 
   // Withdrawals Queue
-  public static requestWithdrawal(userId: string, amountRupees: number, upiId: string): { success: boolean; message: string; record?: WithdrawalRecord } {
+  public static async requestWithdrawal(
+    userId: string,
+    amountRupees: number,
+    upiId: string
+  ): Promise<{ success: boolean; message: string; record?: WithdrawalRecord }> {
     const amountPaise = Math.round(amountRupees * 100);
     const minPaise = 2500;   // ₹25
     const maxPaise = 500000; // ₹5,000
@@ -222,16 +231,14 @@ export class FinancialService {
     if (amountPaise < minPaise) return { success: false, message: 'Minimum withdrawal amount is ₹25' };
     if (amountPaise > maxPaise) return { success: false, message: 'Maximum withdrawal amount is ₹5,000 per request' };
 
-    const wallet = WalletLedger.getUserBalance(userId);
-    if (amountPaise > wallet.winningPaise) {
-      return { success: false, message: `Insufficient Winnings Balance (Available: ₹${(wallet.winningPaise / 100).toFixed(2)})` };
+    const withdrawalId = `WD-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+
+    // Debit winnings atomically in PostgreSQL
+    const debitRes = await WalletService.debitWithdrawal(userId, amountPaise, withdrawalId, upiId);
+    if (!debitRes.success) {
+      return { success: false, message: debitRes.message };
     }
 
-    // Temporarily debit winnings
-    wallet.winningPaise -= amountPaise;
-    wallet.totalPaise = wallet.depositPaise + wallet.winningPaise + wallet.bonusPaise;
-
-    const withdrawalId = `WD-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
     const record: WithdrawalRecord = {
       withdrawalId,
       userId,
@@ -246,15 +253,6 @@ export class FinancialService {
 
     FinancialService.withdrawalRecords.set(withdrawalId, record);
     FinancialService.persist();
-
-    WalletLedger.recordTransaction(
-      userId,
-      'WITHDRAWAL',
-      amountPaise,
-      wallet.totalPaise,
-      withdrawalId,
-      `Pending Withdrawal to UPI: ${upiId}`
-    );
 
     TelegramBotService.sendAlert(
       `💸 *New Withdrawal Request Pending*\nID: \`${withdrawalId}\`\nUser: \`${userId}\`\nAmount: ₹${amountRupees.toFixed(2)}\nUPI: \`${upiId}\``
@@ -294,7 +292,7 @@ export class FinancialService {
     return { success: true, message: `Withdrawal of ₹${record.amountRupees} approved and paid out!`, record };
   }
 
-  public static rejectWithdrawal(withdrawalId: string): { success: boolean; message: string; record?: WithdrawalRecord } {
+  public static async rejectWithdrawal(withdrawalId: string): Promise<{ success: boolean; message: string; record?: WithdrawalRecord }> {
     const record = FinancialService.withdrawalRecords.get(withdrawalId);
     if (!record) return { success: false, message: 'Withdrawal request not found' };
 
@@ -307,19 +305,8 @@ export class FinancialService {
     FinancialService.withdrawalRecords.set(withdrawalId, record);
     FinancialService.persist();
 
-    // Refund debited winnings back to user
-    const wallet = WalletLedger.getUserBalance(record.userId);
-    wallet.winningPaise += record.amountPaise;
-    wallet.totalPaise = wallet.depositPaise + wallet.winningPaise + wallet.bonusPaise;
-
-    WalletLedger.recordTransaction(
-      record.userId,
-      'BET_REFUND',
-      record.amountPaise,
-      wallet.totalPaise,
-      `REF-${withdrawalId}`,
-      `Withdrawal Rejected & Refunded`
-    );
+    // Refund debited winnings back to user atomically in PostgreSQL
+    await WalletService.refundWithdrawal(record.userId, record.amountPaise, withdrawalId);
 
     TelegramBotService.sendAlert(
       `❌ *Withdrawal Rejected & Refunded*\nID: \`${withdrawalId}\`\nUser: \`${record.userId}\`\nAmount: ₹${record.amountRupees.toFixed(2)}`
