@@ -5,6 +5,7 @@ import { authenticateJwt } from './auth.middleware';
 export const authRoutes = Router();
 
 authRoutes.post('/login', AuthController.login);
+authRoutes.get('/status', AuthController.checkStatus);
 authRoutes.post('/admin/login', AuthController.adminLogin);
 authRoutes.post('/whatsapp/initiate', AuthController.initiateWhatsApp);
 authRoutes.post('/whatsapp/verify', AuthController.verifyWhatsApp);

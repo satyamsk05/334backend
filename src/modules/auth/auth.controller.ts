@@ -15,8 +15,32 @@ export class AuthController {
       const result = await AuthService.loginOrRegister(phone, name);
       return ResponseHandler.success(res, result, 'Authentication successful');
     } catch (err: any) {
-      return ResponseHandler.error(res, err.message || 'Auth failed', 401);
+      const isBanned = err.message?.toLowerCase().includes('suspended') || err.message?.toLowerCase().includes('banned');
+      return ResponseHandler.error(res, err.message || 'Auth failed', isBanned ? 403 : 401);
     }
+  }
+
+  public static async checkStatus(req: Request, res: Response) {
+    const userId = (req.query.userId as string) || '';
+    const phone = (req.query.phone as string) || '';
+
+    let user = userId ? AuthService.getUserById(userId) : undefined;
+    if (!user && phone) {
+      const allUsers = AuthService.getAllUsers();
+      user = allUsers.find(u => u.phone === phone.trim());
+    }
+
+    if (!user) {
+      return ResponseHandler.success(res, { exists: false, isBanned: false }, 'User status checked');
+    }
+
+    return ResponseHandler.success(res, {
+      exists: true,
+      userId: user.id,
+      phone: user.phone,
+      name: user.name,
+      isBanned: Boolean(user.isBanned)
+    }, 'User status retrieved');
   }
 
   public static async adminLogin(req: Request, res: Response) {
