@@ -67,6 +67,41 @@ export class AuthService {
       AuthService.users.set(cleanPhone, user);
       AuthService.users.set(user.id, user);
       AuthService.persist();
+    } else if (name && user.name !== name) {
+      user.name = name;
+      user.updatedAt = Date.now();
+      AuthService.persist();
+    }
+
+    // Sync to PostgreSQL users table with phone number so Admin Panel displays it immediately
+    try {
+      const { DatabaseConfig } = await import('../../config/db.config');
+      const pool = DatabaseConfig.getPool();
+      if (pool) {
+        await pool.query(
+          `INSERT INTO users (id, phone, username, is_blocked, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+           ON CONFLICT (id) DO UPDATE
+           SET phone = EXCLUDED.phone,
+               username = EXCLUDED.username,
+               updated_at = CURRENT_TIMESTAMP`,
+          [user.id, user.phone, user.name, user.isBanned]
+        );
+
+        // Also ensure wallet exists
+        await pool.query(
+          `INSERT INTO wallets (
+             id, user_id, available_balance, deposit_balance, winnings_balance,
+             rewards_balance, reserved_balance, locked_balance, version,
+             created_at, updated_at
+           )
+           VALUES ($1, $2, 0, 0, 0, 0, 0, 0, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+           ON CONFLICT (user_id) DO NOTHING`,
+          [`wlt_${user.id}`, user.id]
+        );
+      }
+    } catch (dbErr: any) {
+      Logger.warn(`[AUTH] Failed to sync user to PostgreSQL pool: ${dbErr.message}`);
     }
 
     if (user.isBanned) {

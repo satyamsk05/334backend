@@ -5,6 +5,7 @@ import { AuditService } from '../../services/AuditService';
 import { ResponseHandler } from '../../utils/responseHandler';
 import { RingOfFutureEngine } from '../../game/RingOfFutureEngine';
 import { SocketServer } from '../../sockets/socket.server';
+import { AuthService } from '../auth/auth.service';
 import crypto from 'crypto';
 
 export class AdminController {
@@ -202,8 +203,8 @@ export class AdminController {
       return ResponseHandler.success(res, {
         users: usersRes.rows.map((u: any) => ({
           id: u.id,
-          name: u.username,
-          phone: u.phone,
+          name: u.username || AuthService.getUserById(u.id)?.name || 'Player',
+          phone: u.phone || AuthService.getUserById(u.id)?.phone || '',
           avatarPath: u.avatar_path,
           isBanned: Boolean(u.is_blocked),
           is_blocked: Boolean(u.is_blocked),
@@ -298,10 +299,10 @@ export class AdminController {
 
       const userPayload = {
         id: u.id,
-        name: u.username,
-        username: u.username,
-        phone: u.phone,
-        email: u.email,
+        name: u.username || AuthService.getUserById(u.id)?.name || 'Player',
+        username: u.username || AuthService.getUserById(u.id)?.name || 'Player',
+        phone: u.phone || AuthService.getUserById(u.id)?.phone || '',
+        email: u.email || '',
         avatarPath: u.avatar_path,
         is_blocked: Boolean(u.is_blocked),
         isBanned: Boolean(u.is_blocked),
