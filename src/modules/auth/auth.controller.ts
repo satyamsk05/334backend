@@ -87,4 +87,18 @@ export class AuthController {
     }
     return ResponseHandler.success(res, user, 'Profile retrieved');
   }
+
+  public static async updateProfile(req: Request, res: Response) {
+    const userId = (req as any).user?.userId || req.body.userId;
+    if (!userId) {
+      return ResponseHandler.error(res, 'User ID is required', 400);
+    }
+    try {
+      const { name, avatarUrl } = req.body;
+      const updatedUser = await AuthService.updateProfile(userId, { name, avatarUrl });
+      return ResponseHandler.success(res, updatedUser, 'Profile updated successfully');
+    } catch (err: any) {
+      return ResponseHandler.error(res, err.message || 'Profile update failed', 400);
+    }
+  }
 }

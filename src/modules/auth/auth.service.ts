@@ -51,15 +51,21 @@ export class AuthService {
     }
   }
 
+  public static generateNumericUserId(): string {
+    return Math.floor(1000000 + Math.random() * 9000000).toString();
+  }
+
   public static async loginOrRegister(phone: string, name?: string): Promise<{ token: string; user: User }> {
     const cleanPhone = phone.trim();
     let user = AuthService.users.get(cleanPhone);
 
+    const displayName = (name && name.trim()) ? name.trim() : `Player_${cleanPhone.slice(-4)}`;
+
     if (!user) {
       user = {
-        id: `USR-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`,
+        id: AuthService.generateNumericUserId(),
         phone: cleanPhone,
-        name: name || `Player_${cleanPhone.slice(-4)}`,
+        name: displayName,
         isBanned: false,
         createdAt: Date.now(),
         updatedAt: Date.now()
@@ -67,8 +73,8 @@ export class AuthService {
       AuthService.users.set(cleanPhone, user);
       AuthService.users.set(user.id, user);
       AuthService.persist();
-    } else if (name && user.name !== name) {
-      user.name = name;
+    } else if (name && name.trim() && user.name !== name.trim()) {
+      user.name = name.trim();
       user.updatedAt = Date.now();
       AuthService.persist();
     }
@@ -115,6 +121,36 @@ export class AuthService {
     );
 
     return { token, user };
+  }
+
+  public static async updateProfile(userId: string, data: { name?: string; avatarUrl?: string }): Promise<User> {
+    const user = AuthService.users.get(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+    if (data.name && data.name.trim()) {
+      user.name = data.name.trim();
+    }
+    if (data.avatarUrl && data.avatarUrl.trim()) {
+      user.avatarUrl = data.avatarUrl.trim();
+    }
+    user.updatedAt = Date.now();
+    AuthService.persist();
+
+    try {
+      const { DatabaseConfig } = await import('../../config/db.config');
+      const pool = DatabaseConfig.getPool();
+      if (pool) {
+        await pool.query(
+          `UPDATE users SET username = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
+          [user.name, user.id]
+        );
+      }
+    } catch (e: any) {
+      Logger.warn(`[AUTH] Failed to update user in PostgreSQL: ${e.message}`);
+    }
+
+    return user;
   }
 
   /**

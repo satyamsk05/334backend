@@ -59,7 +59,8 @@ export class FinancialService {
   public static initiateDeposit(userId: string, amountRupees: number): DepositOrder {
     AuthService.ensureUserExists(userId);
     const amountPaise = Math.round(amountRupees * 100);
-    const depositId = `DEP-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+    const rand12 = Math.floor(100000000000 + Math.random() * 900000000000);
+    const depositId = `D${rand12}`;
 
     const order: DepositOrder = {
       depositId,
@@ -231,7 +232,8 @@ export class FinancialService {
     if (amountPaise < minPaise) return { success: false, message: 'Minimum withdrawal amount is ₹25' };
     if (amountPaise > maxPaise) return { success: false, message: 'Maximum withdrawal amount is ₹5,000 per request' };
 
-    const withdrawalId = `WD-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+    const rand12 = Math.floor(100000000000 + Math.random() * 900000000000);
+    const withdrawalId = `T${rand12}`;
 
     // Debit winnings atomically in PostgreSQL
     const debitRes = await WalletService.debitWithdrawal(userId, amountPaise, withdrawalId, upiId);
