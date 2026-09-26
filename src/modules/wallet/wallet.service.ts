@@ -1,6 +1,7 @@
 import { Pool, PoolClient } from 'pg';
 import { DatabaseConfig } from '../../config/db.config';
 import { Transaction } from '../../database/models/Transaction';
+import { AuthService } from '../auth/auth.service';
 import { Logger } from '../../utils/logger';
 
 export interface WalletBalanceState {
@@ -47,12 +48,19 @@ export class WalletService {
    * Both are initialized idempotently.
    */
   public static async ensureWallet(clientOrPool: Pool | PoolClient, userId: string): Promise<WalletRow> {
+    const authUser = AuthService.getUserById(userId);
+    const initialName = authUser?.name || `Player_${userId.slice(-4)}`;
+    const initialPhone = authUser?.phone || null;
+
     // 1. Ensure user row exists so foreign key references succeed
     await clientOrPool.query(
-      `INSERT INTO users (id, username, created_at, updated_at)
-       VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-       ON CONFLICT (id) DO NOTHING`,
-      [userId, `Player_${userId.slice(-4)}`]
+      `INSERT INTO users (id, username, phone, created_at, updated_at)
+       VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+       ON CONFLICT (id) DO UPDATE
+       SET phone = COALESCE(users.phone, EXCLUDED.phone),
+           username = CASE WHEN users.username LIKE 'Player_%' AND EXCLUDED.username NOT LIKE 'Player_%' THEN EXCLUDED.username ELSE users.username END,
+           updated_at = CURRENT_TIMESTAMP`,
+      [userId, initialName, initialPhone]
     );
 
     // 2. Ensure wallet row exists

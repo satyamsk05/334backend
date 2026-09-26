@@ -401,6 +401,18 @@ export class AdminController {
     }
   }
 
+  public static async updateUser(req: Request, res: Response) {
+    const userId = req.params.id;
+    const { name, phone } = req.body;
+    if (!userId) return ResponseHandler.error(res, 'User ID is required', 400);
+    try {
+      const updated = await AuthService.updateProfile(userId, { name, phone });
+      return ResponseHandler.success(res, updated, 'User profile updated successfully');
+    } catch (err: any) {
+      return ResponseHandler.error(res, err.message, 500);
+    }
+  }
+
   public static async toggleUserBan(req: Request, res: Response) {
     const pool = DatabaseConfig.getPool();
     if (!pool) return ResponseHandler.error(res, 'Database unavailable', 500);

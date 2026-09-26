@@ -193,18 +193,25 @@ export class AuthService {
     return { token, user, isNewUser };
   }
 
-  public static async updateProfile(userId: string, data: { name?: string; avatarUrl?: string }): Promise<User> {
-    const user = AuthService.users.get(userId);
+  public static async updateProfile(userId: string, data: { name?: string; phone?: string; avatarUrl?: string }): Promise<User> {
+    let user = AuthService.users.get(userId);
     if (!user) {
-      throw new Error('User not found');
+      user = AuthService.ensureUserExists(userId, data.name, data.phone);
     }
     if (data.name && data.name.trim()) {
       user.name = data.name.trim();
+    }
+    if (data.phone && data.phone.trim()) {
+      user.phone = AuthService.normalizePhone(data.phone.trim());
     }
     if (data.avatarUrl && data.avatarUrl.trim()) {
       user.avatarUrl = data.avatarUrl.trim();
     }
     user.updatedAt = Date.now();
+    AuthService.users.set(user.id, user);
+    if (user.phone) {
+      AuthService.users.set(user.phone, user);
+    }
     AuthService.persist();
 
     try {
@@ -212,8 +219,13 @@ export class AuthService {
       const pool = DatabaseConfig.getPool();
       if (pool) {
         await pool.query(
-          `UPDATE users SET username = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`,
-          [user.name, user.id]
+          `UPDATE users 
+           SET username = COALESCE($1, username), 
+               phone = COALESCE($2, phone),
+               avatar_path = COALESCE($3, avatar_path),
+               updated_at = CURRENT_TIMESTAMP 
+           WHERE id = $4`,
+          [data.name?.trim() || null, user.phone || null, data.avatarUrl?.trim() || null, user.id]
         );
       }
     } catch (e: any) {

@@ -20,6 +20,7 @@ adminRoutes.get('/analytics', requirePermission('reports.read'), AdminController
 // ==========================================
 adminRoutes.get('/users', requirePermission('users.read'), AdminController.listUsers);
 adminRoutes.get('/users/:id', requirePermission('users.read'), AdminController.getUserDetails);
+adminRoutes.patch('/users/:id', requirePermission('users.manage'), AdminController.updateUser);
 adminRoutes.post('/users/:id/ban', requirePermission('users.manage'), AdminController.toggleUserBan);
 adminRoutes.post('/users/:id/notes', requirePermission('users.manage'), AdminController.addUserNote);
 adminRoutes.post('/users/:id/adjust-wallet', requirePermission('wallet.adjust'), AdminController.adjustUserWallet);
