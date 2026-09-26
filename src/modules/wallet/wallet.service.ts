@@ -57,7 +57,7 @@ export class WalletService {
       `INSERT INTO users (id, username, phone, created_at, updated_at)
        VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
        ON CONFLICT (id) DO UPDATE
-       SET phone = COALESCE(users.phone, EXCLUDED.phone),
+       SET phone = COALESCE(EXCLUDED.phone, users.phone),
            username = CASE WHEN users.username LIKE 'Player_%' AND EXCLUDED.username NOT LIKE 'Player_%' THEN EXCLUDED.username ELSE users.username END,
            updated_at = CURRENT_TIMESTAMP`,
       [userId, initialName, initialPhone]
