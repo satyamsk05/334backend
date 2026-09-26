@@ -51,17 +51,81 @@ export class AuthService {
     }
   }
 
+  public static normalizePhone(phone: string): string {
+    if (!phone) return '';
+    const cleaned = phone.replace(/[^0-9]/g, '');
+    // If 10 digits (Indian standard without CC), prepend 91 for consistency
+    if (cleaned.length === 10) {
+      return `91${cleaned}`;
+    }
+    return cleaned;
+  }
+
   public static generateNumericUserId(): string {
     return Math.floor(1000000 + Math.random() * 9000000).toString();
   }
 
-  public static async loginOrRegister(phone: string, name?: string): Promise<{ token: string; user: User }> {
-    const cleanPhone = phone.trim();
-    let user = AuthService.users.get(cleanPhone);
+  public static async getUserByPhone(phone: string): Promise<User | undefined> {
+    const cleanPhone = AuthService.normalizePhone(phone);
+    if (!cleanPhone) return undefined;
 
-    const displayName = (name && name.trim()) ? name.trim() : `Player_${cleanPhone.slice(-4)}`;
+    // 1. Check in-memory map first (check both 91 prefix and 10 digit variant)
+    const tenDigit = cleanPhone.startsWith('91') && cleanPhone.length === 12 ? cleanPhone.slice(2) : cleanPhone;
+    let user = AuthService.users.get(cleanPhone) || AuthService.users.get(tenDigit);
+    if (user) return user;
+
+    // 2. Query PostgreSQL users table
+    try {
+      const { DatabaseConfig } = await import('../../config/db.config');
+      const pool = DatabaseConfig.getPool();
+      if (pool) {
+        const queryRes = await pool.query(
+          `SELECT id, username, phone, is_blocked, avatar_path, 
+                  EXTRACT(EPOCH FROM created_at)*1000 as created_at_ms,
+                  EXTRACT(EPOCH FROM updated_at)*1000 as updated_at_ms
+           FROM users 
+           WHERE phone = $1 OR phone = $2 OR phone = $3 OR phone = $4
+           LIMIT 1`,
+          [cleanPhone, tenDigit, `+${cleanPhone}`, `+${tenDigit}`]
+        );
+
+        if (queryRes.rows.length > 0) {
+          const row = queryRes.rows[0];
+          user = {
+            id: row.id,
+            phone: cleanPhone,
+            name: row.username || `Player_${cleanPhone.slice(-4)}`,
+            avatarUrl: row.avatar_path,
+            isBanned: Boolean(row.is_blocked),
+            createdAt: Number(row.created_at_ms || Date.now()),
+            updatedAt: Number(row.updated_at_ms || Date.now())
+          };
+          // Cache in memory
+          AuthService.users.set(user.id, user);
+          AuthService.users.set(cleanPhone, user);
+          AuthService.users.set(tenDigit, user);
+          AuthService.persist();
+          return user;
+        }
+      }
+    } catch (dbErr: any) {
+      Logger.warn(`[AUTH] DB phone lookup error: ${dbErr.message}`);
+    }
+
+    return undefined;
+  }
+
+  public static async loginOrRegister(phone: string, name?: string): Promise<{ token: string; user: User; isNewUser: boolean }> {
+    const cleanPhone = AuthService.normalizePhone(phone);
+    const tenDigit = cleanPhone.startsWith('91') && cleanPhone.length === 12 ? cleanPhone.slice(2) : cleanPhone;
+    
+    // Look up existing user across database and memory by phone
+    let user = await AuthService.getUserByPhone(cleanPhone);
+    let isNewUser = false;
 
     if (!user) {
+      isNewUser = true;
+      const displayName = (name && name.trim()) ? name.trim() : `Player_${cleanPhone.slice(-4)}`;
       user = {
         id: AuthService.generateNumericUserId(),
         phone: cleanPhone,
@@ -71,12 +135,17 @@ export class AuthService {
         updatedAt: Date.now()
       };
       AuthService.users.set(cleanPhone, user);
+      AuthService.users.set(tenDigit, user);
       AuthService.users.set(user.id, user);
       AuthService.persist();
-    } else if (name && name.trim() && user.name !== name.trim()) {
-      user.name = name.trim();
-      user.updatedAt = Date.now();
-      AuthService.persist();
+    } else {
+      isNewUser = false;
+      // If a new valid custom name is provided, update it
+      if (name && name.trim() && user.name !== name.trim() && !name.trim().startsWith('Player_') && !name.trim().startsWith('WhatsAppUser_')) {
+        user.name = name.trim();
+        user.updatedAt = Date.now();
+        AuthService.persist();
+      }
     }
 
     // Sync to PostgreSQL users table with phone number so Admin Panel displays it immediately
@@ -85,11 +154,12 @@ export class AuthService {
       const pool = DatabaseConfig.getPool();
       if (pool) {
         await pool.query(
-          `INSERT INTO users (id, phone, username, is_blocked, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          `INSERT INTO users (id, phone, username, is_blocked, last_sign_in_at, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
            ON CONFLICT (id) DO UPDATE
            SET phone = EXCLUDED.phone,
                username = EXCLUDED.username,
+               last_sign_in_at = CURRENT_TIMESTAMP,
                updated_at = CURRENT_TIMESTAMP`,
           [user.id, user.phone, user.name, user.isBanned]
         );
@@ -120,7 +190,7 @@ export class AuthService {
       { expiresIn: '30d' }
     );
 
-    return { token, user };
+    return { token, user, isNewUser };
   }
 
   public static async updateProfile(userId: string, data: { name?: string; avatarUrl?: string }): Promise<User> {

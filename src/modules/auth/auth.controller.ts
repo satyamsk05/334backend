@@ -26,8 +26,7 @@ export class AuthController {
 
     let user = userId ? AuthService.getUserById(userId) : undefined;
     if (!user && phone) {
-      const allUsers = AuthService.getAllUsers();
-      user = allUsers.find(u => u.phone === phone.trim());
+      user = await AuthService.getUserByPhone(phone);
     }
 
     if (!user) {

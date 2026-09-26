@@ -54,9 +54,11 @@ export class AdminSchema {
       );
 
       -- 5. Extend users table with columns if missing
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(32);
       ALTER TABLE users ADD COLUMN IF NOT EXISTS last_sign_in_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_path VARCHAR(256);
+      CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);
 
       -- 6. Extend games table with columns if missing
       ALTER TABLE games ADD COLUMN IF NOT EXISTS version VARCHAR(32) DEFAULT '1.0.0';
