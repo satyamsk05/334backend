@@ -13,6 +13,7 @@ import { errorHandler } from './utils/errorHandler';
 import { ResponseHandler } from './utils/responseHandler';
 import { DatabaseConfig } from './config/db.config';
 import { createRateLimiter } from './middleware/rateLimit';
+import xoGameRouter from './routes/xoGame';
 
 const corsOriginEnv = process.env.CORS_ORIGIN || process.env.ALLOWED_ORIGINS;
 const allowedOrigins = corsOriginEnv && corsOriginEnv !== '*'
@@ -108,6 +109,8 @@ export function createApp() {
   app.use('/api/v1/users', userRoutes);
   app.use('/admin', adminRouter);
   app.use('/api/v1/admin', adminRoutes);
+
+  app.use('/api/v1/games/xo', xoGameRouter);
 
   // Web Game and Payment Webpages (Ring Of Future UI & UPI Pay QR)
   app.use(gamePageRouter);

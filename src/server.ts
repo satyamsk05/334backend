@@ -5,6 +5,7 @@ import { DatabaseConfig } from './config/db.config';
 import { RedisConfig } from './config/redis.config';
 import { SocketServer } from './sockets/socket.server';
 import { RingOfFutureEngine } from './game/RingOfFutureEngine';
+import { TicTacToeEngine } from './game/TicTacToeEngine';
 import { Logger } from './utils/logger';
 
 async function bootstrap() {
@@ -63,6 +64,16 @@ async function bootstrap() {
   RingOfFutureEngine.start();
   RingOfFutureEngine.onStateChange((state) => {
     SocketServer.broadcast('RING_OF_FUTURE_STATE', state);
+  });
+
+  // Authoritative TicTacToe / XO Battle Real-time Room Sync
+  TicTacToeEngine.onRoomChange((room) => {
+    if (room.player1 && !room.player1.isBot) {
+      SocketServer.emitToUser(room.player1.userId, 'XO_ROOM_STATE', room);
+    }
+    if (room.player2 && !room.player2.isBot) {
+      SocketServer.emitToUser(room.player2.userId, 'XO_ROOM_STATE', room);
+    }
   });
 
   server.listen(envConfig.port, () => {
