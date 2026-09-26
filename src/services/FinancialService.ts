@@ -117,6 +117,27 @@ export class FinancialService {
     FinancialService.depositOrders.set(depositId, order);
     FinancialService.persist();
 
+    // Sync to PostgreSQL deposits table
+    (async () => {
+      try {
+        const { DatabaseConfig } = await import('../config/db.config');
+        const pool = DatabaseConfig.getPool();
+        if (pool) {
+          await pool.query(
+            `INSERT INTO deposits (id, user_id, amount, status, utr, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, to_timestamp($6 / 1000.0), CURRENT_TIMESTAMP)
+             ON CONFLICT (id) DO UPDATE
+             SET status = EXCLUDED.status,
+                 utr = COALESCE(EXCLUDED.utr, deposits.utr),
+                 updated_at = CURRENT_TIMESTAMP`,
+            [order.depositId, order.userId, order.amountPaise, order.status, order.utr || null, order.createdAt]
+          );
+        }
+      } catch (err: any) {
+        console.error('[FINANCIAL] Failed to sync deposit to PostgreSQL:', err.message);
+      }
+    })();
+
     // Send Telegram alert to Admin
     try {
       TelegramBotService.sendAlert(
@@ -156,6 +177,22 @@ export class FinancialService {
     order.updatedAt = Date.now();
     FinancialService.depositOrders.set(depositId, order);
     FinancialService.persist();
+
+    // Update PostgreSQL deposits table
+    (async () => {
+      try {
+        const { DatabaseConfig } = await import('../config/db.config');
+        const pool = DatabaseConfig.getPool();
+        if (pool) {
+          await pool.query(
+            `UPDATE deposits SET status = 'APPROVED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+            [order.depositId]
+          );
+        }
+      } catch (err: any) {
+        console.error('[FINANCIAL] Failed to update deposit status in PostgreSQL:', err.message);
+      }
+    })();
 
     // Credit user deposit balance atomically in PostgreSQL
     const updatedBalance = await WalletService.creditDeposit(
@@ -211,6 +248,22 @@ export class FinancialService {
     order.updatedAt = Date.now();
     FinancialService.depositOrders.set(depositId, order);
     FinancialService.persist();
+
+    // Update PostgreSQL deposits table
+    (async () => {
+      try {
+        const { DatabaseConfig } = await import('../config/db.config');
+        const pool = DatabaseConfig.getPool();
+        if (pool) {
+          await pool.query(
+            `UPDATE deposits SET status = 'REJECTED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+            [order.depositId]
+          );
+        }
+      } catch (err: any) {
+        console.error('[FINANCIAL] Failed to update deposit status in PostgreSQL:', err.message);
+      }
+    })();
 
     TelegramBotService.sendAlert(
       `❌ *Deposit Rejected*\nOrder: \`${depositId}\`\nUser: \`${order.userId}\`\nAmount: ₹${order.amountRupees.toFixed(2)}`

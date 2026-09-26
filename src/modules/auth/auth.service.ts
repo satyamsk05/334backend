@@ -115,7 +115,18 @@ export class AuthService {
     return undefined;
   }
 
-  public static async loginOrRegister(phone: string, name?: string): Promise<{ token: string; user: User; isNewUser: boolean }> {
+  public static async loginOrRegister(
+    phone: string, 
+    name?: string,
+    deviceInfo?: {
+      deviceModel?: string;
+      osVersion?: string;
+      appVersion?: string;
+      networkType?: string;
+      ip?: string;
+      location?: string;
+    }
+  ): Promise<{ token: string; user: User; isNewUser: boolean }> {
     const cleanPhone = AuthService.normalizePhone(phone);
     const tenDigit = cleanPhone.startsWith('91') && cleanPhone.length === 12 ? cleanPhone.slice(2) : cleanPhone;
     
@@ -148,20 +159,58 @@ export class AuthService {
       }
     }
 
-    // Sync to PostgreSQL users table with phone number so Admin Panel displays it immediately
+    // Sync to PostgreSQL users table with phone number and device telemetry
     try {
       const { DatabaseConfig } = await import('../../config/db.config');
       const pool = DatabaseConfig.getPool();
       if (pool) {
         await pool.query(
-          `INSERT INTO users (id, phone, username, is_blocked, last_sign_in_at, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          `INSERT INTO users (
+             id, phone, username, is_blocked, last_sign_in_at, 
+             device_model, os_version, app_version, ip_address, location,
+             created_at, updated_at
+           )
+           VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
            ON CONFLICT (id) DO UPDATE
            SET phone = EXCLUDED.phone,
                username = EXCLUDED.username,
                last_sign_in_at = CURRENT_TIMESTAMP,
+               device_model = COALESCE(EXCLUDED.device_model, users.device_model),
+               os_version = COALESCE(EXCLUDED.os_version, users.os_version),
+               app_version = COALESCE(EXCLUDED.app_version, users.app_version),
+               ip_address = COALESCE(EXCLUDED.ip_address, users.ip_address),
+               location = COALESCE(EXCLUDED.location, users.location),
                updated_at = CURRENT_TIMESTAMP`,
-          [user.id, user.phone, user.name, user.isBanned]
+          [
+            user.id, 
+            user.phone, 
+            user.name, 
+            user.isBanned,
+            deviceInfo?.deviceModel || null,
+            deviceInfo?.osVersion || null,
+            deviceInfo?.appVersion || null,
+            deviceInfo?.ip || null,
+            deviceInfo?.location || (deviceInfo?.networkType ? `${deviceInfo.networkType} Network` : 'India')
+          ]
+        );
+
+        // Record audit session
+        const sessionId = `sess_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
+        await pool.query(
+          `INSERT INTO user_sessions (
+             id, user_id, device_model, os_version, app_version, ip_address, network_type, location, created_at
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)`,
+          [
+            sessionId,
+            user.id,
+            deviceInfo?.deviceModel || 'Android Device',
+            deviceInfo?.osVersion || 'Android',
+            deviceInfo?.appVersion || '1.0.0',
+            deviceInfo?.ip || '127.0.0.1',
+            deviceInfo?.networkType || 'Mobile',
+            deviceInfo?.location || 'India'
+          ]
         );
 
         // Also ensure wallet exists

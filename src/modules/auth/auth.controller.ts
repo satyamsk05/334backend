@@ -11,8 +11,17 @@ export class AuthController {
     }
 
     try {
-      const { phone, name } = req.body;
-      const result = await AuthService.loginOrRegister(phone, name);
+      const { phone, name, deviceModel, osVersion, appVersion, networkType } = req.body;
+      const rawIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+      const clientIp = Array.isArray(rawIp) ? rawIp[0] : (typeof rawIp === 'string' ? rawIp.split(',')[0].trim() : '127.0.0.1');
+
+      const result = await AuthService.loginOrRegister(phone, name, {
+        deviceModel,
+        osVersion,
+        appVersion,
+        networkType,
+        ip: clientIp
+      });
       return ResponseHandler.success(res, result, 'Authentication successful');
     } catch (err: any) {
       const isBanned = err.message?.toLowerCase().includes('suspended') || err.message?.toLowerCase().includes('banned');

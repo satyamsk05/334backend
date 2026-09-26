@@ -58,7 +58,26 @@ export class AdminSchema {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS last_sign_in_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_path VARCHAR(256);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS device_model VARCHAR(128);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS os_version VARCHAR(128);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS app_version VARCHAR(32);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS ip_address VARCHAR(64);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS location VARCHAR(128);
       CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone);
+
+      -- 5b. Ensure user_sessions table exists for audit history
+      CREATE TABLE IF NOT EXISTS user_sessions (
+        id VARCHAR(64) PRIMARY KEY,
+        user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        device_model VARCHAR(128),
+        os_version VARCHAR(128),
+        app_version VARCHAR(32),
+        ip_address VARCHAR(64),
+        network_type VARCHAR(64),
+        location VARCHAR(128),
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id, created_at DESC);
 
       -- 6. Extend games table with columns if missing
       ALTER TABLE games ADD COLUMN IF NOT EXISTS version VARCHAR(32) DEFAULT '1.0.0';

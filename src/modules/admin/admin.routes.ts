@@ -13,6 +13,7 @@ adminRoutes.use(authenticateAdmin);
 // DASHBOARD & ANALYTICS
 // ==========================================
 adminRoutes.get('/dashboard/stats', requirePermission('reports.read'), AdminController.getDashboardStats);
+adminRoutes.get('/dashboard/pending-counts', requirePermission('reports.read'), AdminController.getPendingCounts);
 adminRoutes.get('/analytics', requirePermission('reports.read'), AdminController.getDashboardStats);
 
 // ==========================================

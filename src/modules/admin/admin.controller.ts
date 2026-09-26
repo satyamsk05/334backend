@@ -120,6 +120,29 @@ export class AdminController {
     }
   }
 
+  public static async getPendingCounts(req: Request, res: Response) {
+    const pool = DatabaseConfig.getPool();
+    if (!pool) return ResponseHandler.error(res, 'Database unavailable', 500);
+
+    try {
+      const [depositsRes, withdrawalsRes] = await Promise.all([
+        pool.query("SELECT COUNT(*) as count FROM deposits WHERE status = 'PENDING'"),
+        pool.query("SELECT COUNT(*) as count FROM withdrawals WHERE status = 'PENDING'")
+      ]);
+
+      const pendingDeposits = Number(depositsRes.rows[0]?.count || 0);
+      const pendingWithdrawals = Number(withdrawalsRes.rows[0]?.count || 0);
+
+      return ResponseHandler.success(res, {
+        pendingDeposits,
+        pendingWithdrawals,
+        totalPending: pendingDeposits + pendingWithdrawals
+      }, 'Pending counts fetched');
+    } catch (err: any) {
+      return ResponseHandler.error(res, err.message, 500);
+    }
+  }
+
   // ==========================================
   // USERS MANAGEMENT
   // ==========================================
@@ -259,7 +282,7 @@ export class AdminController {
       }
       const u = userRes.rows[0];
 
-      // Fetch wallet, ledger, deposits, withdrawals, bets, notes, audits
+      // Fetch wallet, ledger, deposits, withdrawals, bets, notes, audits, sessions
       const [
         walletRes,
         ledgerRes,
@@ -267,7 +290,8 @@ export class AdminController {
         withdrawalsRes,
         betsRes,
         notesRes,
-        auditsRes
+        auditsRes,
+        sessionsRes
       ] = await Promise.all([
         pool.query('SELECT * FROM wallets WHERE user_id = $1', [userId]),
         pool.query('SELECT * FROM wallet_ledger WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50', [userId]),
@@ -275,7 +299,8 @@ export class AdminController {
         pool.query('SELECT * FROM withdrawals WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50', [userId]),
         pool.query('SELECT * FROM bets WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50', [userId]),
         pool.query('SELECT * FROM admin_notes WHERE user_id = $1 ORDER BY created_at DESC', [userId]),
-        pool.query("SELECT * FROM audit_logs WHERE target = $1 OR user_id = $2 ORDER BY created_at DESC LIMIT 50", [`user:${userId}`, userId])
+        pool.query("SELECT * FROM audit_logs WHERE target = $1 OR user_id = $2 ORDER BY created_at DESC LIMIT 50", [`user:${userId}`, userId]),
+        pool.query('SELECT * FROM user_sessions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 20', [userId])
       ]);
 
       const w = walletRes.rows[0] || {
@@ -311,6 +336,11 @@ export class AdminController {
         created_at: u.created_at,
         createdAt: u.created_at,
         updated_at: u.updated_at || u.created_at,
+        device_model: u.device_model || 'Unknown Android Device',
+        os_version: u.os_version || 'Android',
+        app_version: u.app_version || '1.0.0',
+        ip_address: u.ip_address || '127.0.0.1',
+        location: u.location || 'India',
         lastActive: u.last_sign_in_at || u.created_at,
         totalGames: totalBetsCount > 0 ? 1 : 0,
         totalBets: totalBetsCount,
@@ -394,7 +424,9 @@ export class AdminController {
         adminNotes: notesRes.rows || [],
         audits: mappedAudits,
         auditTrail: mappedAudits,
-        auditHistory: mappedAudits
+        auditHistory: mappedAudits,
+        sessions: sessionsRes.rows || [],
+        activity: sessionsRes.rows || []
       });
     } catch (err: any) {
       return ResponseHandler.error(res, err.message, 500);
