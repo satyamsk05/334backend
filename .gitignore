@@ -4,4 +4,7 @@ dist/
 .DS_Store
 *.log
 data/
+*firebase-adminsdk*.json
+serviceAccountKey.json
+
 
