@@ -500,4 +500,65 @@ export class TicTacToeEngine {
 
     this.notifyRoom(room);
   }
+
+  /**
+   * Authoritative Settlement for Client-reported game completion (Win / Draw / Loss)
+   */
+  public static async settleGameResult(
+    userId: string,
+    roomId: string,
+    tierId: string,
+    result: 'WIN' | 'DRAW' | 'LOSS'
+  ): Promise<{ success: boolean; message?: string; prizePaise?: number }> {
+    const tier = XO_STAKE_TIERS.find((t) => t.id === tierId) || XO_STAKE_TIERS[0];
+
+    const room = this.activeRooms.get(roomId);
+    if (room) {
+      room.status = 'COMPLETED';
+      if (room.turnTimerHandle) {
+        clearInterval(room.turnTimerHandle);
+        room.turnTimerHandle = null;
+      }
+    }
+
+    if (result === 'WIN') {
+      const winRef = `XO-WIN-${Date.now()}-${crypto.randomInt(1000, 9999)}`;
+      const idempKey = `idemp_${roomId}_WIN_${userId}`;
+      try {
+        await WalletService.creditWinnings(
+          userId,
+          tier.firstPrizePaise,
+          winRef,
+          `Won 1v1 ${tier.name}`,
+          idempKey,
+          { roomId, tierId }
+        );
+        return { success: true, prizePaise: tier.firstPrizePaise };
+      } catch (err: any) {
+        Logger.error('[XO] Failed to credit win:', err);
+        return { success: false, message: err.message || 'Failed to credit winnings' };
+      }
+    } else if (result === 'DRAW') {
+      const ref = `XO-REFUND-${Date.now()}-${crypto.randomInt(1000, 9999)}`;
+      const idempKey = `idemp_${roomId}_DRAW_${userId}`;
+      try {
+        await WalletService.refundEquity(
+          userId,
+          tier.entryPaise,
+          0,
+          0,
+          ref,
+          `Draw Refund for ${tier.name}`,
+          idempKey
+        );
+        return { success: true, prizePaise: tier.entryPaise };
+      } catch (err: any) {
+        Logger.error('[XO] Failed to refund draw:', err);
+        return { success: false, message: err.message || 'Failed to refund draw' };
+      }
+    }
+
+    return { success: true };
+  }
 }
+

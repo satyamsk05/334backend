@@ -84,4 +84,31 @@ router.post('/move', optionalAuthenticateJwt, async (req: Request, res: Response
   }
 });
 
+// 5. End Game / Settle Outcome (Win / Draw / Loss)
+router.post('/end', optionalAuthenticateJwt, async (req: Request, res: Response) => {
+  try {
+    const userId = resolveXoUserId(req);
+    const { roomId, tierId, result } = req.body;
+
+    if (!userId || typeof userId !== 'string') {
+      return res.status(400).json({ success: false, message: 'Valid userId is required' });
+    }
+
+    if (!roomId || !tierId || !result) {
+      return res.status(400).json({ success: false, message: 'roomId, tierId and result are required' });
+    }
+
+    const settleRes = await TicTacToeEngine.settleGameResult(userId, roomId, tierId, result);
+    if (!settleRes.success) {
+      return res.status(400).json(settleRes);
+    }
+
+    return res.json(settleRes);
+  } catch (err: any) {
+    Logger.error('[XO-API] Settle End Game Error:', err);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 export default router;
+
