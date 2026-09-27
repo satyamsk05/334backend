@@ -3,6 +3,7 @@ import { AdminController } from './admin.controller';
 import { authenticateAdmin, requirePermission } from '../../middleware/rbac.middleware';
 import { DepositController } from '../payments/deposit.controller';
 import { WithdrawController } from '../payments/withdraw.controller';
+import { PromotionController } from '../promotions/promotion.controller';
 
 export const adminRoutes = Router();
 
@@ -83,10 +84,11 @@ adminRoutes.patch('/system/announcements/:id/status', requirePermission('system.
 adminRoutes.post('/system/notifications/push', requirePermission('system.manage'), AdminController.sendPushNotification);
 
 // Promotions & Banners
-adminRoutes.get('/promotions', requirePermission('system.manage'), AdminController.getPromotions);
-adminRoutes.post('/promotions', requirePermission('system.manage'), AdminController.createPromotion);
-adminRoutes.patch('/promotions/:id/status', requirePermission('system.manage'), AdminController.togglePromotionStatus);
-adminRoutes.delete('/promotions/:id', requirePermission('system.manage'), AdminController.deletePromotion);
+adminRoutes.get('/promotions', requirePermission('system.manage'), PromotionController.getAllPromotions);
+adminRoutes.post('/promotions', requirePermission('system.manage'), PromotionController.createPromotion);
+adminRoutes.put('/promotions/:id', requirePermission('system.manage'), PromotionController.updatePromotion);
+adminRoutes.patch('/promotions/:id/status', requirePermission('system.manage'), PromotionController.togglePromotionStatus);
+adminRoutes.delete('/promotions/:id', requirePermission('system.manage'), PromotionController.deletePromotion);
 
 // ==========================================
 // SECURITY & ADMINS

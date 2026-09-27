@@ -5,6 +5,7 @@ import { authRoutes } from './modules/auth/auth.routes';
 import { walletRoutes } from './modules/wallet/wallet.routes';
 import { paymentRoutes } from './modules/payments/payment.routes';
 import { userRoutes } from './modules/users/user.routes';
+import { promotionRoutes } from './modules/promotions/promotion.routes';
 import { adminRoutes } from './modules/admin/admin.routes';
 import { adminRouter } from './routes/admin';
 import { gamePageRouter } from './routes/gamePage';
@@ -108,6 +109,8 @@ export function createApp() {
   app.use('/api/v1/payments', paymentRoutes);
   app.use('/api/v1/users', userRoutes);
   app.use('/users', userRoutes);
+  app.use('/api/v1/promotions', promotionRoutes);
+  app.use('/promotions', promotionRoutes);
   app.use('/admin', adminRouter);
   app.use('/api/v1/admin', adminRoutes);
 
