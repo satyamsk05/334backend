@@ -59,15 +59,15 @@ export function createApp() {
           return callback(null, true);
         }
 
-        // Allow EC2 server public host/IP on any port (deposit page, game page)
-        const publicHost = process.env.PUBLIC_HOST || '3.7.73.109';
-        if (host === publicHost || host === '3.7.73.109') {
+        // Allow configured server public host (deposit page, game page)
+        const publicHost = process.env.PUBLIC_HOST;
+        if (publicHost && host === publicHost) {
           return callback(null, true);
         }
 
         // Allow Admin panel on Vercel (production & preview deployments)
         if (
-          origin === 'https://admin-penal.vercel.app' ||
+          origin === 'https://adminpenal-six.vercel.app' ||
           host.endsWith('.vercel.app')
         ) {
           return callback(null, true);
