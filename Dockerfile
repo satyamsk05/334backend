@@ -13,6 +13,7 @@ ENV NODE_ENV=production
 COPY package*.json ./
 RUN npm ci --only=production
 COPY --from=builder /app/dist ./dist
+COPY *firebase-adminsdk*.json* ./
 
 EXPOSE 4000
 CMD ["node", "dist/server.js"]

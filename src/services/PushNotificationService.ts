@@ -29,25 +29,42 @@ export class PushNotificationService {
         return true;
       }
 
-      // Check for service account key in backend root
-      const backendDir = path.resolve(__dirname, '../../');
-      const files = fs.readdirSync(backendDir);
-      const serviceAccountFile = files.find(
-        (f) => f.includes('firebase-adminsdk') && f.endsWith('.json')
-      );
+      // Check candidate locations for service account key
+      const candidateDirs = [
+        process.cwd(),
+        path.resolve(__dirname, '../../'),
+        path.resolve(__dirname, '../'),
+        '/app'
+      ];
 
-      if (serviceAccountFile) {
-        const fullPath = path.join(backendDir, serviceAccountFile);
-        const serviceAccount = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+      let foundPath: string | null = null;
+      let foundFileName = '';
+
+      for (const dir of candidateDirs) {
+        if (fs.existsSync(dir)) {
+          const files = fs.readdirSync(dir);
+          const serviceAccountFile = files.find(
+            (f) => f.includes('firebase-adminsdk') && f.endsWith('.json')
+          );
+          if (serviceAccountFile) {
+            foundPath = path.join(dir, serviceAccountFile);
+            foundFileName = serviceAccountFile;
+            break;
+          }
+        }
+      }
+
+      if (foundPath) {
+        const serviceAccount = JSON.parse(fs.readFileSync(foundPath, 'utf8'));
 
         this.app = initializeApp({
           credential: cert(serviceAccount)
         });
 
-        Logger.info(`[PushNotification] Firebase Admin SDK successfully initialized from ${serviceAccountFile}`);
+        Logger.info(`[PushNotification] Firebase Admin SDK successfully initialized from ${foundFileName}`);
         return true;
       } else {
-        Logger.warn('[PushNotification] No Firebase service account JSON file found in backend root.');
+        Logger.warn('[PushNotification] No Firebase service account JSON file found in candidate locations.');
         return false;
       }
     } catch (err: any) {
