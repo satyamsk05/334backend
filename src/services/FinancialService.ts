@@ -173,6 +173,21 @@ export class FinancialService {
       return { success: false, message: `Deposit is already ${order.status}` };
     }
 
+    let updatedBalance;
+    try {
+      // Credit user deposit balance atomically in PostgreSQL FIRST
+      updatedBalance = await WalletService.creditDeposit(
+        order.userId,
+        order.amountPaise,
+        order.utr || order.depositId,
+        'Deposit Approved',
+        order.depositId
+      );
+    } catch (err: any) {
+      console.error('[FINANCIAL] Wallet credit failed during deposit approval:', err.message);
+      return { success: false, message: `Failed to credit wallet: ${err.message}` };
+    }
+
     order.status = DepositStatus.APPROVED;
     order.updatedAt = Date.now();
     FinancialService.depositOrders.set(depositId, order);
@@ -193,15 +208,6 @@ export class FinancialService {
         console.error('[FINANCIAL] Failed to update deposit status in PostgreSQL:', err.message);
       }
     })();
-
-    // Credit user deposit balance atomically in PostgreSQL
-    const updatedBalance = await WalletService.creditDeposit(
-      order.userId,
-      order.amountPaise,
-      order.utr || order.depositId,
-      'Deposit Approved',
-      order.depositId
-    );
 
     // Live sync over WebSockets to client app & webpage
     try {

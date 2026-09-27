@@ -36,6 +36,29 @@ export class AuditService {
     }
   }
 
+  public static async mandatoryLog(entry: AuditEntry): Promise<void> {
+    const pool = DatabaseConfig.getPool();
+    if (!pool) {
+      throw new Error('Database pool unavailable for mandatory audit logging');
+    }
+
+    const auditId = `aud_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+    await pool.query(
+      `INSERT INTO audit_logs (id, admin_id, action, target, user_id, ip_address, details, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)`,
+      [
+        auditId,
+        entry.adminId || 'SYSTEM',
+        entry.action,
+        entry.target || null,
+        entry.userId || null,
+        entry.ipAddress || null,
+        JSON.stringify(entry.details || {})
+      ]
+    );
+    Logger.info(`[AUDIT-MANDATORY] Action: ${entry.action} by ${entry.adminId} on ${entry.target || 'N/A'}`);
+  }
+
   public static async getLogs(limit: number = 100, actionFilter?: string): Promise<any[]> {
     const pool = DatabaseConfig.getPool();
     if (!pool) return [];

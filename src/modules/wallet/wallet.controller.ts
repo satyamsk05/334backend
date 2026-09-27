@@ -4,11 +4,10 @@ import { ResponseHandler } from '../../utils/responseHandler';
 
 export class WalletController {
   public static async getBalance(req: Request, res: Response) {
-    const rawUserId = (req as any).user?.userId || (req as any).user?.id || (req.query.userId as string);
-    if (!rawUserId || typeof rawUserId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(rawUserId)) {
-      return ResponseHandler.error(res, 'Valid userId is required', 400);
+    const userId = (req as any).user?.userId || (req as any).user?.id;
+    if (!userId || typeof userId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(userId)) {
+      return ResponseHandler.error(res, 'Unauthorized or invalid user identity', 401);
     }
-    const userId = rawUserId;
     try {
       const balance = await WalletService.getBalance(userId);
       return ResponseHandler.success(res, {
@@ -28,11 +27,10 @@ export class WalletController {
   }
 
   public static async getTransactions(req: Request, res: Response) {
-    const rawUserId = (req as any).user?.userId || (req as any).user?.id || (req.query.userId as string);
-    if (!rawUserId || typeof rawUserId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(rawUserId)) {
-      return ResponseHandler.error(res, 'Valid userId is required', 400);
+    const userId = (req as any).user?.userId || (req as any).user?.id;
+    if (!userId || typeof userId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(userId)) {
+      return ResponseHandler.error(res, 'Unauthorized or invalid user identity', 401);
     }
-    const userId = rawUserId;
     try {
       const txs = await WalletService.getTransactions(userId);
       return ResponseHandler.success(res, txs, 'Transactions history fetched');

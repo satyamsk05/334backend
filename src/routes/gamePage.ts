@@ -1,20 +1,45 @@
 import { Router, Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import { RingOfFutureEngine, MultiplierType } from '../game/RingOfFutureEngine';
 import { WalletLedger } from '../services/WalletLedger';
+import { envConfig } from '../config/env.config';
+import { optionalAuthenticateJwt } from '../modules/auth/auth.middleware';
 
 export const gamePageRouter = Router();
 
-gamePageRouter.get('/api/v1/ring-of-future/state', async (req: Request, res: Response) => {
-  const userId = (req.query.userId as string) || '';
+function resolveUserIdFromRequest(req: Request): string {
+  const user = (req as any).user;
+  if (user?.userId || user?.id) return user.userId || user.id;
+
+  const authHeader = req.headers.authorization;
+  const token = (authHeader && authHeader.startsWith('Bearer '))
+    ? authHeader.slice(7).trim()
+    : (req.query.token as string) || (req.body?.token as string);
+
+  if (token) {
+    try {
+      const decoded: any = jwt.verify(token, envConfig.jwtSecret);
+      return decoded.userId || decoded.id || '';
+    } catch {
+      // Invalid token
+    }
+  }
+
+  return (req.query.userId as string) || (req.body?.userId as string) || '';
+}
+
+gamePageRouter.get('/api/v1/ring-of-future/state', optionalAuthenticateJwt, async (req: Request, res: Response) => {
+  const userId = resolveUserIdFromRequest(req);
   const state = RingOfFutureEngine.getSnapshotForUser(userId);
   const wallet = userId ? await WalletLedger.getUserBalance(userId) : { depositPaise: 0, winningPaise: 0, bonusPaise: 0, totalPaise: 0 };
   res.json({ success: true, data: { gameState: state, wallet } });
 });
 
-gamePageRouter.post('/api/v1/ring-of-future/bet', async (req: Request, res: Response) => {
-  const { userId, multiplierType, amountRupees } = req.body;
+gamePageRouter.post('/api/v1/ring-of-future/bet', optionalAuthenticateJwt, async (req: Request, res: Response) => {
+  const userId = resolveUserIdFromRequest(req);
+  const { multiplierType, amountRupees } = req.body;
   if (!userId || typeof userId !== 'string' || !userId.trim()) {
-    return res.status(400).json({ success: false, message: 'Valid userId is required' });
+    return res.status(401).json({ success: false, message: 'Authentication or valid userId is required to place bets' });
   }
   const num = parseFloat(amountRupees);
   if (isNaN(num) || num <= 0) {
@@ -39,11 +64,26 @@ gamePageRouter.post('/api/v1/ring-of-future/bet', async (req: Request, res: Resp
 });
 
 gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) => {
-  const rawUserId = (req.query.userId as string);
-  if (!rawUserId || !/^[a-zA-Z0-9_-]+$/.test(rawUserId)) {
-    return res.status(400).send('<div style="padding: 20px; font-family: sans-serif; text-align: center; color: red;"><h3>Error: Valid userId parameter is required to access Ring of Future.</h3></div>');
+  let token = (req.query.token as string) || '';
+  let userId = '';
+
+  if (token) {
+    try {
+      const decoded: any = jwt.verify(token, envConfig.jwtSecret);
+      userId = decoded.userId || decoded.id || '';
+    } catch {
+      // Invalid token
+    }
   }
-  const userId = rawUserId;
+
+  if (!userId) {
+    userId = (req.query.userId as string) || '';
+  }
+
+  if (!userId || !/^[a-zA-Z0-9_-]+$/.test(userId)) {
+    return res.status(400).send('<div style="padding: 20px; font-family: sans-serif; text-align: center; color: red;"><h3>Error: Valid userId or token parameter is required to access Ring of Future.</h3></div>');
+  }
+
   const wallet = await WalletLedger.getUserBalance(userId);
   const initialState = RingOfFutureEngine.getSnapshotForUser(userId);
 
@@ -157,6 +197,7 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
 
   <script>
     const userId = ${JSON.stringify(userId)};
+    const authToken = ${JSON.stringify(token)};
     let selectedChipRupees = 10;
     let currentPhase = "${initialState.phase}";
     let targetSegmentIndex = ${initialState.winningSegmentIndex};
@@ -233,7 +274,7 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
     }
 
     function openDeposit() {
-      window.location.href = '/pay?userId=' + userId + '&amount=500';
+      window.location.href = '/pay?userId=' + encodeURIComponent(userId) + '&amount=500' + (authToken ? '&token=' + encodeURIComponent(authToken) : '');
     }
 
     async function placeBet(multiplierType) {
@@ -243,10 +284,14 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
       }
 
       try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (authToken) {
+          headers['Authorization'] = 'Bearer ' + authToken;
+        }
         const res = await fetch('/api/v1/ring-of-future/bet', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, multiplierType, amountRupees: selectedChipRupees })
+          headers,
+          body: JSON.stringify({ userId, multiplierType, amountRupees: selectedChipRupees, token: authToken })
         });
         const data = await res.json();
         if (data.success) {
@@ -342,7 +387,11 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
     // Auto Poll State every 1s
     async function syncState() {
       try {
-        const res = await fetch('/api/v1/ring-of-future/state?userId=' + userId);
+        const headers = {};
+        if (authToken) {
+          headers['Authorization'] = 'Bearer ' + authToken;
+        }
+        const res = await fetch('/api/v1/ring-of-future/state?userId=' + encodeURIComponent(userId) + (authToken ? '&token=' + encodeURIComponent(authToken) : ''), { headers });
         const data = await res.json();
         if (data.success) {
           updateUI(data.data);

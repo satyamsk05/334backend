@@ -3,9 +3,19 @@ import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
 
-dotenv.config({ path: path.join(__dirname, '../../.env') });
+import { envConfig } from '../config/env.config';
 
-const connectionString = process.env.DATABASE_URL || 'postgresql://postgres.ssmciyzhvftnczdokwoo:Sk728926sk%40%26@aws-0-ap-south-1.pooler.supabase.com:5432/postgres';
+const connectionString = envConfig.databaseUrl || process.env.DATABASE_URL;
+
+if (!connectionString) {
+  console.error('❌ DATABASE_URL is not set. Aborting database reset.');
+  process.exit(1);
+}
+
+if (process.env.NODE_ENV === 'production' && !process.argv.includes('--force-production-reset')) {
+  console.error('❌ Refusing to reset database in production without --force-production-reset flag.');
+  process.exit(1);
+}
 
 async function resetAllData() {
   console.log('🔄 Starting Complete Database & Ledger Reset...');

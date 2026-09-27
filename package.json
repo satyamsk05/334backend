@@ -8,7 +8,9 @@
     "start": "node dist/server.js",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "db:reset": "ts-node src/scripts/resetDatabase.ts",
-    "test": "ts-node tests/wallet.persistence.test.ts"
+    "test:wallet": "ts-node tests/wallet.persistence.test.ts",
+    "test:security": "ts-node tests/security.auth.test.ts",
+    "test": "ts-node tests/security.auth.test.ts && ts-node tests/wallet.persistence.test.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

@@ -16,24 +16,10 @@ adminRouter.get('/ui', (req: Request, res: Response) => {
   res.send(getAdminDashboardHtml());
 });
 
-// Secret protection middleware for JSON API endpoints
-adminRouter.use((req: Request, res: Response, next) => {
-  if (req.query.secret) {
-    return res.status(400).json({ success: false, message: 'Forbidden: Admin authentication via query parameters is disabled' });
-  }
+import { authenticateAdmin } from '../middleware/rbac.middleware';
 
-  const secret = req.headers['x-admin-secret'] as string;
-  const configuredSecret = process.env.ADMIN_SECRET_KEY || process.env.ADMIN_PASSWORD;
-
-  if (!configuredSecret) {
-    return res.status(500).json({ success: false, message: 'Server configuration error: ADMIN_SECRET_KEY is not configured in .env' });
-  }
-
-  if (!secret || secret !== configuredSecret) {
-    return res.status(401).json({ success: false, message: 'Unauthorized: Invalid Admin Secret Header' });
-  }
-  next();
-});
+// Protection middleware for JSON API endpoints
+adminRouter.use(authenticateAdmin);
 
 adminRouter.get('/analytics', (req: Request, res: Response) => {
   const users = AuthService.getAllUsers();

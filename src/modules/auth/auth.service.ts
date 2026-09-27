@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { envConfig } from '../../config/env.config';
 import { User } from '../../database/models/User';
@@ -285,28 +286,64 @@ export class AuthService {
   }
 
   /**
-   * Admin Authentication Handler (Strictly loads from envConfig)
+   * Admin Authentication Handler (Checks PostgreSQL admins table first, fallbacks to envConfig)
    */
-  public static async adminLogin(usernameInput: string, passwordInput: string): Promise<{ token: string; username: string }> {
+  public static async adminLogin(usernameInput: string, passwordInput: string): Promise<{ token: string; username: string; role?: string }> {
+    const cleanUsername = usernameInput?.trim();
+    const cleanPassword = passwordInput?.trim();
+
+    if (!cleanUsername || !cleanPassword) {
+      throw new Error('Username and password are required');
+    }
+
+    const sha256Pass = crypto.createHash('sha256').update(cleanPassword).digest('hex');
+
+    // 1. Try PostgreSQL admins table
+    try {
+      const { DatabaseConfig } = await import('../../config/db.config');
+      const pool = DatabaseConfig.getPool();
+      if (pool) {
+        const queryRes = await pool.query(
+          `SELECT id, username, password_hash, role, is_active FROM admins WHERE username = $1 LIMIT 1`,
+          [cleanUsername]
+        );
+        if (queryRes.rows.length > 0) {
+          const adminRow = queryRes.rows[0];
+          if (!adminRow.is_active) {
+            throw new Error('Admin account is disabled');
+          }
+          if (adminRow.password_hash === sha256Pass || adminRow.password_hash === cleanPassword) {
+            await pool.query('UPDATE admins SET last_login_at = CURRENT_TIMESTAMP WHERE id = $1', [adminRow.id]);
+            const token = jwt.sign(
+              { id: adminRow.id, username: adminRow.username, role: adminRow.role || 'ADMIN' },
+              envConfig.adminJwtSecret || envConfig.jwtSecret,
+              { expiresIn: '1d' }
+            );
+            Logger.info(`[AUTH] Admin login successful for DB admin: ${adminRow.username} (Role: ${adminRow.role})`);
+            return { token, username: adminRow.username, role: adminRow.role };
+          }
+        }
+      }
+    } catch (err: any) {
+      if (err.message === 'Admin account is disabled') throw err;
+      Logger.warn(`[AUTH] DB admin check error, checking env credentials: ${err.message}`);
+    }
+
+    // 2. Fallback to envConfig credentials
     const adminUser = envConfig.adminUsername;
     const adminPass = envConfig.adminPassword;
 
-    if (!adminUser || !adminPass) {
-      throw new Error('Admin credentials are not configured in backend/.env');
+    if (adminUser && adminPass && cleanUsername === adminUser && cleanPassword === adminPass) {
+      const token = jwt.sign(
+        { id: 'env-super-admin', username: adminUser, role: 'SUPER_ADMIN' },
+        envConfig.adminJwtSecret || envConfig.jwtSecret,
+        { expiresIn: '1d' }
+      );
+      Logger.info(`[AUTH] Admin login successful for master admin: ${adminUser}`);
+      return { token, username: adminUser, role: 'SUPER_ADMIN' };
     }
 
-    if (usernameInput !== adminUser || passwordInput !== adminPass) {
-      throw new Error('Invalid Admin Username or Password');
-    }
-
-    const token = jwt.sign(
-      { username: adminUser, role: 'ADMIN' },
-      envConfig.adminJwtSecret || envConfig.jwtSecret,
-      { expiresIn: '1d' }
-    );
-
-    Logger.info(`[AUTH] Admin login successful for ${adminUser}`);
-    return { token, username: adminUser };
+    throw new Error('Invalid Admin Username or Password');
   }
 
   /**
