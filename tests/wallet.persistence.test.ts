@@ -242,7 +242,7 @@ async function runTests() {
   } finally {
     // Thoroughly clean up all test users and associated rows to keep live database 100% clean
     try {
-      const cleanupIds = [testUserId, raceUserId];
+      const cleanupIds = [testUserId];
       await pool.query('DELETE FROM wallet_ledger WHERE user_id = ANY($1)', [cleanupIds]).catch(() => {});
       await pool.query('DELETE FROM transactions WHERE user_id = ANY($1)', [cleanupIds]).catch(() => {});
       await pool.query('DELETE FROM bets WHERE user_id = ANY($1)', [cleanupIds]).catch(() => {});
