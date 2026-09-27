@@ -107,6 +107,7 @@ export function createApp() {
   app.use('/api/v1/wallet', walletRoutes);
   app.use('/api/v1/payments', paymentRoutes);
   app.use('/api/v1/users', userRoutes);
+  app.use('/users', userRoutes);
   app.use('/admin', adminRouter);
   app.use('/api/v1/admin', adminRoutes);
 

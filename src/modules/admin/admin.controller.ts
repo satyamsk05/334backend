@@ -7,6 +7,7 @@ import { RingOfFutureEngine } from '../../game/RingOfFutureEngine';
 import { TicTacToeEngine } from '../../game/TicTacToeEngine';
 import { SocketServer } from '../../sockets/socket.server';
 import { AuthService } from '../auth/auth.service';
+import { PushNotificationService } from '../../services/PushNotificationService';
 import crypto from 'crypto';
 
 export class AdminController {
@@ -1052,6 +1053,28 @@ export class AdminController {
       });
 
       return ResponseHandler.success(res, { id, status }, `Announcement status updated to ${status}`);
+    } catch (err: any) {
+      return ResponseHandler.error(res, err.message, 500);
+    }
+  }
+
+  public static async sendPushNotification(req: Request, res: Response) {
+    const { title, body, message, userId, targetAudience } = req.body;
+    const notifTitle = title || 'Game In Play Alert';
+    const notifBody = body || message;
+
+    if (!notifBody) {
+      return ResponseHandler.error(res, 'Notification message / body is required', 400);
+    }
+
+    try {
+      const result = await PushNotificationService.sendNotification({
+        title: notifTitle,
+        body: notifBody,
+        userId: userId || (targetAudience === 'ALL' ? undefined : targetAudience)
+      });
+
+      return ResponseHandler.success(res, result, 'Push notification broadcast successfully');
     } catch (err: any) {
       return ResponseHandler.error(res, err.message, 500);
     }

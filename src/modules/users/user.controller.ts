@@ -46,4 +46,23 @@ export class UserController {
       return ResponseHandler.error(res, err.message || 'Failed to adjust wallet', 500);
     }
   }
+
+  public static async registerFcmToken(req: Request, res: Response) {
+    const { userId, fcmToken } = req.body;
+    if (!userId || !fcmToken) {
+      return ResponseHandler.error(res, 'userId and fcmToken are required', 400);
+    }
+
+    const pool = (await import('../../config/db.config')).DatabaseConfig.getPool();
+    if (pool) {
+      try {
+        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS fcm_token TEXT;`);
+        await pool.query(`UPDATE users SET fcm_token = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`, [fcmToken, userId]);
+      } catch (e: any) {
+        console.warn('Failed to update fcm_token in DB:', e.message);
+      }
+    }
+
+    return ResponseHandler.success(res, { userId, fcmToken }, 'FCM token registered successfully');
+  }
 }

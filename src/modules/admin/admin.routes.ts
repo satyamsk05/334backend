@@ -80,6 +80,7 @@ adminRoutes.patch('/system/settings/:key', requirePermission('system.manage'), A
 adminRoutes.get('/system/announcements', requirePermission('system.manage'), AdminController.getAnnouncements);
 adminRoutes.post('/system/announcements', requirePermission('system.manage'), AdminController.createAnnouncement);
 adminRoutes.patch('/system/announcements/:id/status', requirePermission('system.manage'), AdminController.toggleAnnouncementStatus);
+adminRoutes.post('/system/notifications/push', requirePermission('system.manage'), AdminController.sendPushNotification);
 
 // ==========================================
 // SECURITY & ADMINS
