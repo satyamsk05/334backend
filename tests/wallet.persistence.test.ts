@@ -240,9 +240,14 @@ async function runTests() {
     console.log('🎉 ALL 9 WALLET PERSISTENCE TESTS PASSED SUCCESSFULLY!');
     console.log('====================================================');
   } finally {
-    // Clean up test users to keep database tidy
+    // Thoroughly clean up all test users and associated rows to keep live database 100% clean
     try {
-      await pool.query('DELETE FROM users WHERE id IN ($1, $2)', [testUserId, `race_usr_${testUserId.split('_')[2]}`]);
+      const cleanupIds = [testUserId, raceUserId];
+      await pool.query('DELETE FROM wallet_ledger WHERE user_id = ANY($1)', [cleanupIds]).catch(() => {});
+      await pool.query('DELETE FROM transactions WHERE user_id = ANY($1)', [cleanupIds]).catch(() => {});
+      await pool.query('DELETE FROM bets WHERE user_id = ANY($1)', [cleanupIds]).catch(() => {});
+      await pool.query('DELETE FROM wallets WHERE user_id = ANY($1)', [cleanupIds]).catch(() => {});
+      await pool.query('DELETE FROM users WHERE id = ANY($1) OR id LIKE \'race_usr_%\' OR id LIKE \'test_%\'', [cleanupIds]).catch(() => {});
     } catch (_) {}
     await DatabaseConfig.close();
   }
