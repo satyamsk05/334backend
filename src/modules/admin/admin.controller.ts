@@ -1081,6 +1081,178 @@ export class AdminController {
   }
 
   // ==========================================
+  // PROMOTIONS & APP HERO CAROUSEL BANNERS
+  // ==========================================
+
+  public static async getPromotions(_req: Request, res: Response) {
+    const pool = DatabaseConfig.getPool();
+    if (!pool) return ResponseHandler.error(res, 'Database unavailable', 500);
+
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS promotions (
+          id VARCHAR(64) PRIMARY KEY,
+          title VARCHAR(255) NOT NULL,
+          subtitle VARCHAR(255) NOT NULL,
+          badge_text VARCHAR(64),
+          cta_text VARCHAR(64) DEFAULT 'PLAY NOW',
+          target_route VARCHAR(128) DEFAULT '/games',
+          gradient_start VARCHAR(32) DEFAULT '#F59E0B',
+          gradient_end VARCHAR(32) DEFAULT '#D97706',
+          is_active BOOLEAN DEFAULT TRUE,
+          display_order INT DEFAULT 1,
+          created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      let promoRes = await pool.query('SELECT * FROM promotions ORDER BY display_order ASC, created_at DESC');
+
+      // Seed initial default banners if empty
+      if (promoRes.rows.length === 0) {
+        const seedBanners = [
+          {
+            id: 'promo_welcome_50',
+            title: '🎁 ₹50 Welcome Bonus Drop',
+            subtitle: 'Instant signup bonus credited on first login',
+            badge_text: 'HOT OFFER',
+            cta_text: 'CLAIM BONUS',
+            target_route: '/wallet',
+            gradient_start: '#8B5CF6',
+            gradient_end: '#6D28D9',
+            display_order: 1
+          },
+          {
+            id: 'promo_xo_battle',
+            title: '⚔️ 1v1 XO Multiplayer Battles',
+            subtitle: 'Fast 60s matches with instant double cash payout',
+            badge_text: 'NEW GAME',
+            cta_text: 'BATTLE NOW',
+            target_route: '/games/xo',
+            gradient_start: '#3B82F6',
+            gradient_end: '#1D4ED8',
+            display_order: 2
+          },
+          {
+            id: 'promo_ring_jackpot',
+            title: '🎡 Ring of Future: 30x Jackpot',
+            subtitle: 'Green multiplier triggers huge 30x winnings',
+            badge_text: '30X JACKPOT',
+            cta_text: 'SPIN NOW',
+            target_route: '/games/ring',
+            gradient_start: '#10B981',
+            gradient_end: '#047857',
+            display_order: 3
+          }
+        ];
+
+        for (const b of seedBanners) {
+          await pool.query(
+            `INSERT INTO promotions (id, title, subtitle, badge_text, cta_text, target_route, gradient_start, gradient_end, display_order)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [b.id, b.title, b.subtitle, b.badge_text, b.cta_text, b.target_route, b.gradient_start, b.gradient_end, b.display_order]
+          );
+        }
+
+        promoRes = await pool.query('SELECT * FROM promotions ORDER BY display_order ASC, created_at DESC');
+      }
+
+      return ResponseHandler.success(res, promoRes.rows);
+    } catch (err: any) {
+      return ResponseHandler.error(res, err.message, 500);
+    }
+  }
+
+  public static async createPromotion(req: Request, res: Response) {
+    const pool = DatabaseConfig.getPool();
+    if (!pool) return ResponseHandler.error(res, 'Database unavailable', 500);
+
+    const {
+      title,
+      subtitle,
+      badgeText = 'SPECIAL',
+      ctaText = 'PLAY NOW',
+      targetRoute = '/games',
+      gradientStart = '#F59E0B',
+      gradientEnd = '#D97706',
+      displayOrder = 1
+    } = req.body;
+
+    const admin = (req as any).admin || { username: 'ADMIN' };
+
+    if (!title || !subtitle) {
+      return ResponseHandler.error(res, 'Title and subtitle are required', 400);
+    }
+
+    const id = `promo_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+    try {
+      await pool.query(
+        `INSERT INTO promotions (id, title, subtitle, badge_text, cta_text, target_route, gradient_start, gradient_end, display_order, is_active, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        [id, title.trim(), subtitle.trim(), badgeText.trim(), ctaText.trim(), targetRoute.trim(), gradientStart, gradientEnd, displayOrder]
+      );
+
+      await AuditService.log({
+        adminId: admin.username,
+        action: 'PROMOTION_CREATED',
+        target: `promo:${id}`,
+        details: { title, badgeText, targetRoute }
+      });
+
+      return ResponseHandler.success(res, { id }, 'Promotion banner created successfully');
+    } catch (err: any) {
+      return ResponseHandler.error(res, err.message, 500);
+    }
+  }
+
+  public static async togglePromotionStatus(req: Request, res: Response) {
+    const pool = DatabaseConfig.getPool();
+    if (!pool) return ResponseHandler.error(res, 'Database unavailable', 500);
+
+    const id = req.params.id;
+    const { isActive } = req.body;
+    const admin = (req as any).admin || { username: 'ADMIN' };
+
+    try {
+      await pool.query('UPDATE promotions SET is_active = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [isActive, id]);
+
+      await AuditService.log({
+        adminId: admin.username,
+        action: 'PROMOTION_STATUS_CHANGED',
+        target: `promo:${id}`,
+        details: { isActive }
+      });
+
+      return ResponseHandler.success(res, { id, isActive }, `Promotion banner is now ${isActive ? 'ACTIVE' : 'INACTIVE'}`);
+    } catch (err: any) {
+      return ResponseHandler.error(res, err.message, 500);
+    }
+  }
+
+  public static async deletePromotion(req: Request, res: Response) {
+    const pool = DatabaseConfig.getPool();
+    if (!pool) return ResponseHandler.error(res, 'Database unavailable', 500);
+
+    const id = req.params.id;
+    const admin = (req as any).admin || { username: 'ADMIN' };
+
+    try {
+      await pool.query('DELETE FROM promotions WHERE id = $1', [id]);
+
+      await AuditService.log({
+        adminId: admin.username,
+        action: 'PROMOTION_DELETED',
+        target: `promo:${id}`
+      });
+
+      return ResponseHandler.success(res, { id }, 'Promotion banner deleted');
+    } catch (err: any) {
+      return ResponseHandler.error(res, err.message, 500);
+    }
+  }
+
+  // ==========================================
   // SECURITY: ADMIN USERS, SESSIONS & AUDIT LOGS
   // ==========================================
 

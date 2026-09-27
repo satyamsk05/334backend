@@ -82,6 +82,12 @@ adminRoutes.post('/system/announcements', requirePermission('system.manage'), Ad
 adminRoutes.patch('/system/announcements/:id/status', requirePermission('system.manage'), AdminController.toggleAnnouncementStatus);
 adminRoutes.post('/system/notifications/push', requirePermission('system.manage'), AdminController.sendPushNotification);
 
+// Promotions & Banners
+adminRoutes.get('/promotions', requirePermission('system.manage'), AdminController.getPromotions);
+adminRoutes.post('/promotions', requirePermission('system.manage'), AdminController.createPromotion);
+adminRoutes.patch('/promotions/:id/status', requirePermission('system.manage'), AdminController.togglePromotionStatus);
+adminRoutes.delete('/promotions/:id', requirePermission('system.manage'), AdminController.deletePromotion);
+
 // ==========================================
 // SECURITY & ADMINS
 // ==========================================
