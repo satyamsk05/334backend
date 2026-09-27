@@ -1104,6 +1104,14 @@ export class AdminController {
           created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         );
+
+        ALTER TABLE promotions ADD COLUMN IF NOT EXISTS badge_text VARCHAR(64);
+        ALTER TABLE promotions ADD COLUMN IF NOT EXISTS cta_text VARCHAR(64) DEFAULT 'PLAY NOW';
+        ALTER TABLE promotions ADD COLUMN IF NOT EXISTS target_route VARCHAR(128) DEFAULT '/games';
+        ALTER TABLE promotions ADD COLUMN IF NOT EXISTS gradient_start VARCHAR(32) DEFAULT '#8B5CF6';
+        ALTER TABLE promotions ADD COLUMN IF NOT EXISTS gradient_end VARCHAR(32) DEFAULT '#6D28D9';
+        ALTER TABLE promotions ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE;
+        ALTER TABLE promotions ADD COLUMN IF NOT EXISTS display_order INT DEFAULT 1;
       `);
 
       let promoRes = await pool.query('SELECT * FROM promotions ORDER BY display_order ASC, created_at DESC');
