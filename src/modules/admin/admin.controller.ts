@@ -4,6 +4,7 @@ import { WalletService } from '../wallet/wallet.service';
 import { AuditService } from '../../services/AuditService';
 import { ResponseHandler } from '../../utils/responseHandler';
 import { RingOfFutureEngine } from '../../game/RingOfFutureEngine';
+import { TicTacToeEngine } from '../../game/TicTacToeEngine';
 import { SocketServer } from '../../sockets/socket.server';
 import { AuthService } from '../auth/auth.service';
 import crypto from 'crypto';
@@ -30,6 +31,7 @@ export class AdminController {
         depositStats,
         withdrawStats,
         betStats,
+        ledgerStats,
         recentActivity
       ] = await Promise.all([
         pool.query(`
@@ -70,6 +72,13 @@ export class AdminController {
           FROM bets
         `),
         pool.query(`
+          SELECT 
+            COUNT(*) FILTER (WHERE type IN ('BET_DEBIT', 'BET_PLACED', 'BET')) as total_bets,
+            COALESCE(SUM(amount) FILTER (WHERE type IN ('BET_DEBIT', 'BET_PLACED', 'BET') AND created_at >= ${timeInterval}), 0) as total_wagered,
+            COALESCE(SUM(amount) FILTER (WHERE type IN ('WIN_PAYOUT', 'GAME_WIN', 'BET_WIN') AND created_at >= ${timeInterval}), 0) as total_payouts
+          FROM wallet_ledger
+        `),
+        pool.query(`
           SELECT id, admin_id, action, target, details, created_at
           FROM audit_logs
           ORDER BY created_at DESC
@@ -80,6 +89,13 @@ export class AdminController {
       const totalRoundsPlayed = RingOfFutureEngine.getRoundCount();
       const dbRoundsCountRes = await pool.query('SELECT COUNT(*) FROM game_rounds');
       const totalRoundsInDb = Number(dbRoundsCountRes.rows[0]?.count || 0);
+
+      const tableBetsCount = Number(betStats.rows[0]?.total_bets || 0);
+      const ledgerBetsCount = Number(ledgerStats.rows[0]?.total_bets || 0);
+      const tableWagered = Number(betStats.rows[0]?.total_wagered || 0);
+      const ledgerWagered = Number(ledgerStats.rows[0]?.total_wagered || 0);
+      const tablePayouts = Number(betStats.rows[0]?.total_payouts || 0);
+      const ledgerPayouts = Number(ledgerStats.rows[0]?.total_payouts || 0);
 
       const data = {
         users: {
@@ -103,10 +119,10 @@ export class AdminController {
         games: {
           totalRounds: Math.max(totalRoundsPlayed, totalRoundsInDb),
           engineRounds: totalRoundsPlayed,
-          totalBets: Number(betStats.rows[0].total_bets),
-          totalWageredPaise: Number(betStats.rows[0].total_wagered),
-          totalPayoutsPaise: Number(betStats.rows[0].total_payouts),
-          activeGames: 1
+          totalBets: Math.max(tableBetsCount, ledgerBetsCount),
+          totalWageredPaise: Math.max(tableWagered, ledgerWagered),
+          totalPayoutsPaise: Math.max(tablePayouts, ledgerPayouts),
+          activeGames: 2
         },
         recentActivity: recentActivity.rows.map((r: any) => ({
           ...r,
@@ -310,9 +326,75 @@ export class AdminController {
         available_balance: '0'
       };
 
-      const totalBetsCount = betsRes.rows.length;
-      const totalWageredPaise = betsRes.rows.reduce((sum: number, b: any) => sum + Number(b.stake || 0), 0);
-      const totalPayoutPaise = betsRes.rows.reduce((sum: number, b: any) => sum + Number(b.win_amount || 0), 0);
+      // Synthesize bets from both DB bets table and authoritative wallet_ledger
+      const winEntries = ledgerRes.rows.filter((r: any) => 
+        ['WIN_PAYOUT', 'WIN_CREDIT', 'WIN'].includes(String(r.transaction_type).toUpperCase())
+      );
+      const refundEntries = ledgerRes.rows.filter((r: any) => 
+        ['BET_REFUND', 'REFUND_EQUITY', 'REFUND'].includes(String(r.transaction_type).toUpperCase())
+      );
+
+      const betTxns = ledgerRes.rows.filter((r: any) => 
+        ['BET_DEBIT', 'BET_PLACED', 'BET'].includes(String(r.transaction_type).toUpperCase())
+      );
+
+      const ledgerBets: any[] = [];
+      for (const b of betTxns) {
+        const meta = typeof b.metadata === 'string' ? JSON.parse(b.metadata) : (b.metadata || {});
+        const isXo = meta.game === 'TIC_TAC_TOE' || String(b.reference_id).startsWith('XO-') || String(b.description).toLowerCase().includes('battle');
+        const gameName = isXo ? 'XO Battle (1v1)' : 'Ring of Future';
+        
+        // Find matching win payout or refund
+        const correspondingWin = winEntries.find((winItem: any) => {
+          const wMeta = typeof winItem.metadata === 'string' ? JSON.parse(winItem.metadata) : (winItem.metadata || {});
+          return (meta.roomId && wMeta.roomId === meta.roomId) || 
+                 (Math.abs(new Date(winItem.created_at).getTime() - new Date(b.created_at).getTime()) < 300000);
+        });
+
+        const correspondingRefund = refundEntries.find((rf: any) => {
+          return Math.abs(new Date(rf.created_at).getTime() - new Date(b.created_at).getTime()) < 300000;
+        });
+
+        const payoutAmount = correspondingWin ? Number(correspondingWin.amount) : (correspondingRefund ? Number(correspondingRefund.amount) : 0);
+        const status = correspondingWin ? 'WON' : (correspondingRefund ? 'DRAW' : 'LOST');
+
+        ledgerBets.push({
+          id: b.reference_id || b.id,
+          round_id: meta.roomId || meta.roundId || b.reference_id || 'N/A',
+          game_type: gameName,
+          tier_name: b.description || (isXo ? '1v1 Battle' : 'Standard Round'),
+          selected_option: isXo ? 'XO 1v1' : (meta.color || 'Game Bet'),
+          stake: Number(b.amount),
+          bet_amount: String(b.amount || 0),
+          win_amount: payoutAmount,
+          payout_amount: String(payoutAmount),
+          payout_multiplier: payoutAmount > 0 && Number(b.amount) > 0 ? Number((payoutAmount / Number(b.amount)).toFixed(2)) : 0,
+          status,
+          created_at: b.created_at
+        });
+      }
+
+      const allBets = [
+        ...betsRes.rows.map((b: any) => ({
+          id: b.id,
+          round_id: b.round_id,
+          game_type: 'Ring of Future',
+          tier_name: 'Color Bet',
+          selected_option: b.selected_option || 'green',
+          stake: Number(b.stake),
+          bet_amount: String(b.stake || 0),
+          win_amount: Number(b.win_amount || 0),
+          payout_amount: String(b.win_amount || 0),
+          payout_multiplier: Number(b.payout_multiplier || 0),
+          status: b.status || (Number(b.win_amount) > 0 ? 'WON' : 'LOST'),
+          created_at: b.created_at
+        })),
+        ...ledgerBets
+      ];
+
+      const totalBetsCount = allBets.length;
+      const totalWageredPaise = allBets.reduce((sum: number, b: any) => sum + Number(b.stake || 0), 0);
+      const totalPayoutPaise = allBets.reduce((sum: number, b: any) => sum + Number(b.win_amount || 0), 0);
 
       const approvedDeposits = depositsRes.rows.filter((d: any) => d.status === 'APPROVED');
       const totalDepositsPaise = approvedDeposits.reduce((sum: number, d: any) => sum + Number(d.amount || 0), 0);
@@ -378,15 +460,6 @@ export class AdminController {
         metadata: typeof r.metadata === 'string' ? JSON.parse(r.metadata) : (r.metadata || {})
       }));
 
-      const mappedBets = betsRes.rows.map((b: any) => ({
-        ...b,
-        stake: Number(b.stake),
-        win_amount: Number(b.win_amount),
-        bet_amount: String(b.stake || 0),
-        payout_amount: String(b.win_amount || 0),
-        payout_multiplier: Number(b.payout_multiplier)
-      }));
-
       const mappedAudits = auditsRes.rows.map((a: any) => ({
         ...a,
         action: a.action || 'UPDATE',
@@ -417,9 +490,9 @@ export class AdminController {
           ...w,
           amount: Number(w.amount)
         })),
-        bets: mappedBets,
-        recentBets: mappedBets,
-        gameHistory: mappedBets,
+        bets: allBets,
+        recentBets: allBets,
+        gameHistory: allBets,
         notes: notesRes.rows || [],
         adminNotes: notesRes.rows || [],
         audits: mappedAudits,
@@ -568,6 +641,7 @@ export class AdminController {
     try {
       const gamesRes = await pool.query('SELECT * FROM games ORDER BY display_order ASC, created_at ASC');
       const currentEngineRound = RingOfFutureEngine.getRoundCount();
+      const activeXoRooms = TicTacToeEngine.getActiveRoomsCount();
 
       const games = gamesRes.rows.map((g: any) => ({
         ...g,
@@ -575,7 +649,7 @@ export class AdminController {
         min_stake: Number(g.min_stake),
         max_stake: Number(g.max_stake),
         config: typeof g.config === 'string' ? JSON.parse(g.config) : (g.config || {}),
-        activePlayers: g.id === 'ring_of_future' ? 1 : 0,
+        activePlayers: g.id === 'ring_of_future' ? 1 : (g.id === 'xo_battle' || g.id === 'tic_tac_toe' ? activeXoRooms * 2 : 0),
         currentRound: g.id === 'ring_of_future' ? currentEngineRound : 0
       }));
 
@@ -597,21 +671,57 @@ export class AdminController {
       }
       const game = gameRes.rows[0];
 
-      // Bets aggregations for this game
-      const betsRes = await pool.query(`
-        SELECT 
-          COUNT(*) as total_bets,
-          COALESCE(SUM(stake), 0) as total_wagered,
-          COALESCE(SUM(win_amount), 0) as total_payouts
-        FROM bets
-      `);
+      let totalBets = 0;
+      let totalWagered = 0;
+      let totalPayouts = 0;
 
-      const runtimeStatus = gameId === 'ring_of_future' ? {
+      if (gameId === 'xo_battle' || gameId === 'tic_tac_toe') {
+        const xoLedger = await pool.query(`
+          SELECT 
+            COUNT(*) FILTER (WHERE type IN ('BET_DEBIT', 'BET') AND (reference_id ILIKE 'XO-%' OR metadata::text ILIKE '%xo%')) as total_bets,
+            COALESCE(SUM(amount) FILTER (WHERE type IN ('BET_DEBIT', 'BET') AND (reference_id ILIKE 'XO-%' OR metadata::text ILIKE '%xo%')), 0) as total_wagered,
+            COALESCE(SUM(amount) FILTER (WHERE type IN ('WIN_PAYOUT', 'GAME_WIN') AND (reference_id ILIKE 'XO-%' OR metadata::text ILIKE '%xo%')), 0) as total_payouts
+          FROM wallet_ledger
+        `);
+        totalBets = Number(xoLedger.rows[0]?.total_bets || 0);
+        totalWagered = Number(xoLedger.rows[0]?.total_wagered || 0);
+        totalPayouts = Number(xoLedger.rows[0]?.total_payouts || 0);
+      } else {
+        const [betsRes, ledgerRes] = await Promise.all([
+          pool.query(`
+            SELECT 
+              COUNT(*) as total_bets,
+              COALESCE(SUM(stake), 0) as total_wagered,
+              COALESCE(SUM(win_amount), 0) as total_payouts
+            FROM bets
+          `),
+          pool.query(`
+            SELECT 
+              COUNT(*) FILTER (WHERE type IN ('BET_DEBIT', 'BET') AND reference_id NOT ILIKE 'XO-%') as total_bets,
+              COALESCE(SUM(amount) FILTER (WHERE type IN ('BET_DEBIT', 'BET') AND reference_id NOT ILIKE 'XO-%'), 0) as total_wagered,
+              COALESCE(SUM(amount) FILTER (WHERE type IN ('WIN_PAYOUT', 'GAME_WIN') AND reference_id NOT ILIKE 'XO-%'), 0) as total_payouts
+            FROM wallet_ledger
+          `)
+        ]);
+        totalBets = Math.max(Number(betsRes.rows[0]?.total_bets || 0), Number(ledgerRes.rows[0]?.total_bets || 0));
+        totalWagered = Math.max(Number(betsRes.rows[0]?.total_wagered || 0), Number(ledgerRes.rows[0]?.total_wagered || 0));
+        totalPayouts = Math.max(Number(betsRes.rows[0]?.total_payouts || 0), Number(ledgerRes.rows[0]?.total_payouts || 0));
+      }
+
+      const isRing = gameId === 'ring_of_future';
+      const isXo = gameId === 'xo_battle' || gameId === 'tic_tac_toe';
+
+      const runtimeStatus = isRing ? {
         isRunning: true,
         phase: RingOfFutureEngine.getSnapshotForUser('').phase,
         secondsRemaining: RingOfFutureEngine.getSnapshotForUser('').secondsRemaining,
         currentRound: RingOfFutureEngine.getRoundCount(),
         connectedPlayers: SocketServer.getConnectedClientsCount ? SocketServer.getConnectedClientsCount() : 1
+      } : isXo ? {
+        isRunning: true,
+        activeRooms: TicTacToeEngine.getActiveRoomsCount(),
+        availableTiers: TicTacToeEngine.getTiers().length,
+        connectedPlayers: TicTacToeEngine.getActiveRoomsCount() * 2
       } : {
         isRunning: false,
         status: game.status
@@ -623,9 +733,9 @@ export class AdminController {
           config: typeof game.config === 'string' ? JSON.parse(game.config) : (game.config || {})
         },
         stats: {
-          totalBets: Number(betsRes.rows[0].total_bets),
-          totalWageredPaise: Number(betsRes.rows[0].total_wagered),
-          totalPayoutsPaise: Number(betsRes.rows[0].total_payouts)
+          totalBets,
+          totalWageredPaise: totalWagered,
+          totalPayoutsPaise: totalPayouts
         },
         runtimeStatus
       });

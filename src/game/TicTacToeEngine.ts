@@ -560,5 +560,9 @@ export class TicTacToeEngine {
 
     return { success: true };
   }
+
+  public static getActiveRoomsCount(): number {
+    return this.activeRooms.size;
+  }
 }
 
