@@ -50,6 +50,11 @@ export function authenticateAdmin(req: Request, res: Response, next: NextFunctio
   const configuredSecret = process.env.ADMIN_SECRET_KEY || envConfig.adminPassword;
 
   if (configuredSecret && adminSecret && adminSecret === configuredSecret) {
+    (req as any).admin = {
+      id: 'sys-admin',
+      username: 'sysadmin',
+      role: 'SUPER_ADMIN'
+    };
     return next();
   }
 
@@ -58,7 +63,8 @@ export function authenticateAdmin(req: Request, res: Response, next: NextFunctio
     const token = authHeader.split(' ')[1];
     try {
       const decoded = jwt.verify(token, envConfig.adminJwtSecret || envConfig.jwtSecret) as any;
-      if (decoded.role === 'ADMIN') {
+      const validRoles = ['SUPER_ADMIN', 'ADMIN', 'FINANCE_ADMIN', 'GAME_OPERATOR', 'SUPPORT_ADMIN', 'GAME_ADMIN', 'VIEWER'];
+      if (decoded.role && validRoles.includes(decoded.role)) {
         (req as any).admin = decoded;
         return next();
       }
@@ -67,5 +73,6 @@ export function authenticateAdmin(req: Request, res: Response, next: NextFunctio
     }
   }
 
-  return ResponseHandler.error(res, 'Unauthorized: Admin privileges required', 403);
+  return ResponseHandler.error(res, 'Unauthorized: Admin privileges required', 401);
 }
+
