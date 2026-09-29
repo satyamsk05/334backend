@@ -10,7 +10,10 @@ export class RedisManager {
   private static subscribedChannels = new Set<string>();
 
   public static init(): void {
-    const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
+    const host = process.env.REDIS_HOST || '127.0.0.1';
+    const port = process.env.REDIS_PORT || '6379';
+    const auth = process.env.REDIS_PASSWORD ? `:${encodeURIComponent(process.env.REDIS_PASSWORD)}@` : '';
+    const redisUrl = process.env.REDIS_URL || `redis://${auth}${host}:${port}`;
 
     try {
       RedisManager.client = new Redis(redisUrl, {
