@@ -41,38 +41,5 @@ export function optionalAuthenticateJwt(req: Request, _res: Response, next: Next
   return next();
 }
 
-export function authenticateAdmin(req: Request, res: Response, next: NextFunction) {
-  if (req.query.secret) {
-    return ResponseHandler.error(res, 'Authentication via URL query parameters is forbidden', 400);
-  }
-
-  const adminSecret = req.headers['x-admin-secret'];
-  const configuredSecret = process.env.ADMIN_SECRET_KEY || envConfig.adminPassword;
-
-  if (configuredSecret && adminSecret && adminSecret === configuredSecret) {
-    (req as any).admin = {
-      id: 'sys-admin',
-      username: 'sysadmin',
-      role: 'SUPER_ADMIN'
-    };
-    return next();
-  }
-
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.split(' ')[1];
-    try {
-      const decoded = jwt.verify(token, envConfig.adminJwtSecret || envConfig.jwtSecret) as any;
-      const validRoles = ['SUPER_ADMIN', 'ADMIN', 'FINANCE_ADMIN', 'GAME_OPERATOR', 'SUPPORT_ADMIN', 'GAME_ADMIN', 'VIEWER'];
-      if (decoded.role && validRoles.includes(decoded.role)) {
-        (req as any).admin = decoded;
-        return next();
-      }
-    } catch (e) {
-      // invalid admin token
-    }
-  }
-
-  return ResponseHandler.error(res, 'Unauthorized: Admin privileges required', 401);
-}
+export { authenticateAdmin } from '../../middleware/rbac.middleware';
 

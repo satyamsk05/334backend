@@ -1,17 +1,16 @@
 import { Router, Request, Response } from 'express';
 import { TicTacToeEngine } from '../game/TicTacToeEngine';
 import { Logger } from '../utils/logger';
-import { optionalAuthenticateJwt } from '../modules/auth/auth.middleware';
+import { authenticateJwt } from '../modules/auth/auth.middleware';
 
 const router = Router();
 
-function resolveXoUserId(req: Request): string {
+function getAuthenticatedUserId(req: Request): string {
   const user = (req as any).user;
-  if (user?.userId || user?.id) return user.userId || user.id;
-  return (req.body?.userId as string) || (req.query?.userId as string) || (req.headers['x-user-id'] as string) || '';
+  return user?.userId || user?.id || '';
 }
 
-// 1. Get all stake tiers (₹1, ₹5, ₹10, ₹25, ₹50, ₹100)
+// 1. Get all stake tiers (₹1, ₹5, ₹10, ₹25, ₹50, ₹100) - Public catalog
 router.get('/tiers', (_req: Request, res: Response) => {
   res.json({
     success: true,
@@ -19,27 +18,27 @@ router.get('/tiers', (_req: Request, res: Response) => {
   });
 });
 
-// 2. Get active room for user
-router.get('/room', optionalAuthenticateJwt, (req: Request, res: Response) => {
-  const userId = resolveXoUserId(req);
+// 2. Get active room for user - Requires authenticated session
+router.get('/room', authenticateJwt, async (req: Request, res: Response) => {
+  const userId = getAuthenticatedUserId(req);
   if (!userId) {
-    return res.status(400).json({ success: false, message: 'Valid userId or authentication is required' });
+    return res.status(401).json({ success: false, message: 'Authentication required' });
   }
-  const room = TicTacToeEngine.getRoomForUser(userId);
+  const room = await TicTacToeEngine.getRoomForUserAsync(userId);
   return res.json({
     success: true,
     data: room || null
   });
 });
 
-// 3. Join Matchmaking Queue
-router.post('/join', optionalAuthenticateJwt, async (req: Request, res: Response) => {
+// 3. Join Matchmaking Queue - Requires authenticated session
+router.post('/join', authenticateJwt, async (req: Request, res: Response) => {
   try {
-    const userId = resolveXoUserId(req);
+    const userId = getAuthenticatedUserId(req);
     const { name, avatarUrl, tierId } = req.body;
 
-    if (!userId || typeof userId !== 'string' || !userId.trim()) {
-      return res.status(400).json({ success: false, message: 'Valid userId is required' });
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
     if (!tierId) {
@@ -58,14 +57,14 @@ router.post('/join', optionalAuthenticateJwt, async (req: Request, res: Response
   }
 });
 
-// 4. Submit Move
-router.post('/move', optionalAuthenticateJwt, async (req: Request, res: Response) => {
+// 4. Submit Move - Requires authenticated session
+router.post('/move', authenticateJwt, async (req: Request, res: Response) => {
   try {
-    const userId = resolveXoUserId(req);
+    const userId = getAuthenticatedUserId(req);
     const { roomId, cellIndex } = req.body;
 
-    if (!userId || typeof userId !== 'string') {
-      return res.status(400).json({ success: false, message: 'Valid userId is required' });
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
     if (!roomId || cellIndex === undefined) {
@@ -84,21 +83,21 @@ router.post('/move', optionalAuthenticateJwt, async (req: Request, res: Response
   }
 });
 
-// 5. End Game / Settle Outcome (Win / Draw / Loss)
-router.post('/end', optionalAuthenticateJwt, async (req: Request, res: Response) => {
+// 5. End Game / Settle Outcome - Server Authoritative Settlement
+router.post('/end', authenticateJwt, async (req: Request, res: Response) => {
   try {
-    const userId = resolveXoUserId(req);
-    const { roomId, tierId, result } = req.body;
+    const userId = getAuthenticatedUserId(req);
+    const { roomId, tierId } = req.body;
 
-    if (!userId || typeof userId !== 'string') {
-      return res.status(400).json({ success: false, message: 'Valid userId is required' });
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
-    if (!roomId || !tierId || !result) {
-      return res.status(400).json({ success: false, message: 'roomId, tierId and result are required' });
+    if (!roomId) {
+      return res.status(400).json({ success: false, message: 'roomId is required' });
     }
 
-    const settleRes = await TicTacToeEngine.settleGameResult(userId, roomId, tierId, result);
+    const settleRes = await TicTacToeEngine.settleGameResult(userId, roomId, tierId);
     if (!settleRes.success) {
       return res.status(400).json(settleRes);
     }

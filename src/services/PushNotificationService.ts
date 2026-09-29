@@ -29,7 +29,25 @@ export class PushNotificationService {
         return true;
       }
 
-      // Check candidate locations for service account key
+      // 1. Check environment variable for service account credentials (preferred in production / secrets manager)
+      const envServiceAccount = process.env.FIREBASE_SERVICE_ACCOUNT || process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+      if (envServiceAccount) {
+        let serviceAccount: any;
+        try {
+          serviceAccount = JSON.parse(envServiceAccount);
+        } catch {
+          // Attempt base64 decode if encoded
+          const decoded = Buffer.from(envServiceAccount, 'base64').toString('utf8');
+          serviceAccount = JSON.parse(decoded);
+        }
+        this.app = initializeApp({
+          credential: cert(serviceAccount)
+        });
+        Logger.info('[PushNotification] Firebase Admin SDK successfully initialized from environment variable');
+        return true;
+      }
+
+      // 2. Check candidate locations for service account key (local development fallback)
       const candidateDirs = [
         process.cwd(),
         path.resolve(__dirname, '../../'),
@@ -64,7 +82,7 @@ export class PushNotificationService {
         Logger.info(`[PushNotification] Firebase Admin SDK successfully initialized from ${foundFileName}`);
         return true;
       } else {
-        Logger.warn('[PushNotification] No Firebase service account JSON file found in candidate locations.');
+        Logger.warn('[PushNotification] No Firebase service account configured (set FIREBASE_SERVICE_ACCOUNT env var).');
         return false;
       }
     } catch (err: any) {

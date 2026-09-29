@@ -106,36 +106,88 @@ export function requirePermission(permission: Permission) {
   };
 }
 
-export function authenticateAdmin(req: Request, res: Response, next: NextFunction) {
-  // 1. Check for Bearer token
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.split(' ')[1];
-    try {
-      const secret = envConfig.adminJwtSecret || envConfig.jwtSecret;
-      const decoded = jwt.verify(token, secret) as any;
-      (req as any).admin = {
-        id: decoded.id || decoded.userId || 'admin',
-        username: decoded.username || 'admin',
-        role: decoded.role || 'SUPER_ADMIN'
-      };
-      return next();
-    } catch {
-      return ResponseHandler.error(res, 'Unauthorized: Invalid or expired admin token', 401);
+export async function resolveAuthoritativeAdmin(decoded: any): Promise<{ id: string; username: string; role: AdminRole } | null> {
+  const adminId = decoded?.id || decoded?.userId;
+  const username = decoded?.username;
+
+  if (!username) return null;
+
+  // 1. Authoritative PostgreSQL verification (overrides any role claimed in JWT)
+  try {
+    const { DatabaseConfig } = await import('../config/db.config');
+    const pool = DatabaseConfig.getPool();
+    if (pool) {
+      const res = await pool.query(
+        'SELECT id, username, role, is_active FROM admins WHERE id = $1 OR username = $2 LIMIT 1',
+        [adminId, username]
+      );
+      if (res.rows.length > 0) {
+        const row = res.rows[0];
+        if (!row.is_active) {
+          return null; // Disabled admin account
+        }
+        return {
+          id: row.id,
+          username: row.username,
+          role: row.role as AdminRole
+        };
+      }
     }
+  } catch (err) {
+    // If DB is temporarily unavailable or check fails, do not allow arbitrary escalation
   }
 
-  // 2. Check for x-admin-secret header
-  const secretHeader = req.headers['x-admin-secret'] as string;
-  const configuredSecret = process.env.ADMIN_SECRET_KEY || process.env.ADMIN_PASSWORD || envConfig.adminPassword;
-  if (secretHeader && configuredSecret && secretHeader === configuredSecret) {
-    (req as any).admin = {
-      id: 'sys-admin',
-      username: 'sysadmin',
+  // 2. Fallback to master environment admin (exact match required)
+  if (
+    adminId === 'env-super-admin' &&
+    envConfig.adminUsername &&
+    username === envConfig.adminUsername
+  ) {
+    return {
+      id: 'env-super-admin',
+      username,
       role: 'SUPER_ADMIN'
     };
-    return next();
   }
 
-  return ResponseHandler.error(res, 'Unauthorized: Admin authentication required', 401);
+  return null;
+}
+
+function extractCookie(cookieHeader: string | undefined, name: string): string | null {
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+export async function authenticateAdmin(req: Request, res: Response, next: NextFunction) {
+  if (req.query?.secret) {
+    return ResponseHandler.error(res, 'Authentication via URL query parameters is forbidden', 400);
+  }
+
+  let token: string | null = null;
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
+  } else if (req.headers.cookie) {
+    token = extractCookie(req.headers.cookie, 'adminToken');
+  }
+
+  if (!token) {
+    return ResponseHandler.error(res, 'Unauthorized: Admin authentication required', 401);
+  }
+
+  try {
+    const secret = envConfig.adminJwtSecret || envConfig.jwtSecret;
+    const decoded = jwt.verify(token, secret) as any;
+
+    const adminPrincipal = await resolveAuthoritativeAdmin(decoded);
+    if (!adminPrincipal) {
+      return ResponseHandler.error(res, 'Unauthorized: Admin account is invalid or inactive', 403);
+    }
+
+    (req as any).admin = adminPrincipal;
+    return next();
+  } catch {
+    return ResponseHandler.error(res, 'Unauthorized: Invalid or expired admin token', 401);
+  }
 }

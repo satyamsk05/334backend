@@ -1,18 +1,28 @@
 import { Router, Request, Response } from 'express';
 import QRCode from 'qrcode';
+import jwt from 'jsonwebtoken';
 import { FinancialService } from '../services/FinancialService';
+import { envConfig } from '../config/env.config';
+import { authenticateJwt } from '../modules/auth/auth.middleware';
 
 export const depositPageRouter = Router();
 
 const MERCHANT_UPI_ID = process.env.PAYMENT_UPI_ID || process.env.MERCHANT_UPI_ID || 'satyamskk@ptyes';
 const MERCHANT_NAME = process.env.PAYMENT_MERCHANT_NAME || process.env.MERCHANT_NAME || 'satyam';
 
-// Deposit Initiate API
-depositPageRouter.post('/api/v1/deposits/initiate', (req: Request, res: Response) => {
-  const { userId, amountRupees } = req.body;
-  if (!userId || typeof userId !== 'string' || !userId.trim()) {
-    return res.status(400).json({ success: false, message: 'Valid userId is required' });
+// Deposit Initiate API (Requires valid JWT authentication)
+depositPageRouter.post('/api/v1/deposits/initiate', authenticateJwt, (req: Request, res: Response) => {
+  const authenticatedUserId = (req as any).user?.userId || (req as any).user?.id;
+  if (!authenticatedUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
   }
+
+  const { userId, amountRupees } = req.body;
+  if (userId && userId !== authenticatedUserId) {
+    return res.status(403).json({ success: false, message: 'Forbidden: You cannot initiate deposits for another user' });
+  }
+  const effectiveUserId = authenticatedUserId;
+
   const num = parseFloat(amountRupees);
   if (isNaN(num) || num <= 0) {
     return res.status(400).json({ success: false, message: 'Invalid deposit amount' });
@@ -21,17 +31,17 @@ depositPageRouter.post('/api/v1/deposits/initiate', (req: Request, res: Response
   // Reuse pending deposit if existing within 15 minutes to avoid duplicates
   const pending = FinancialService.getPendingDeposits();
   const existing = pending.find(
-    (d) => d.userId === userId && Math.abs(d.amountRupees - num) < 0.01 && Date.now() - d.createdAt < 15 * 60 * 1000
+    (d) => d.userId === effectiveUserId && Math.abs(d.amountRupees - num) < 0.01 && Date.now() - d.createdAt < 15 * 60 * 1000
   );
 
-  const order = existing || FinancialService.initiateDeposit(userId, num);
+  const order = existing || FinancialService.initiateDeposit(effectiveUserId, num);
 
   res.json({
     success: true,
     data: {
       depositId: order.depositId,
       amountRupees: order.amountRupees,
-      payUrl: `/pay?orderId=${encodeURIComponent(order.depositId)}&userId=${encodeURIComponent(userId)}&amount=${order.amountRupees}`
+      payUrl: `/pay?orderId=${encodeURIComponent(order.depositId)}&userId=${encodeURIComponent(effectiveUserId)}&amount=${order.amountRupees}`
     }
   });
 });
@@ -63,16 +73,34 @@ depositPageRouter.get('/api/v1/deposits/status', (req: Request, res: Response) =
   });
 });
 
-// UTR Submission API
-depositPageRouter.post('/api/v1/deposits/submit-utr', (req: Request, res: Response) => {
+// UTR Submission API (Requires valid JWT authentication)
+depositPageRouter.post('/api/v1/deposits/submit-utr', authenticateJwt, (req: Request, res: Response) => {
   try {
+    const authenticatedUserId = (req as any).user?.userId || (req as any).user?.id;
+    if (!authenticatedUserId) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+
     const { depositId, utr, userId, amountRupees } = req.body;
     if (!depositId) {
       return res.status(400).json({ success: false, message: 'Deposit ID is required' });
     }
 
+    if (userId && userId !== authenticatedUserId) {
+      return res.status(403).json({ success: false, message: 'Forbidden: You cannot submit UTR for another user' });
+    }
+
+    const existingOrder = FinancialService.getDeposit(depositId);
+    if (!existingOrder) {
+      return res.status(404).json({ success: false, message: 'Deposit order not found' });
+    }
+
+    if (existingOrder.userId !== authenticatedUserId) {
+      return res.status(403).json({ success: false, message: 'Forbidden: You do not own this deposit order' });
+    }
+
     const parsedAmount = amountRupees ? parseFloat(amountRupees) : undefined;
-    const result = FinancialService.submitUtr(depositId, utr, userId, parsedAmount);
+    const result = FinancialService.submitUtr(depositId, utr, authenticatedUserId, parsedAmount);
     if (!result.success) {
       return res.status(400).json(result);
     }
@@ -86,15 +114,39 @@ depositPageRouter.post('/api/v1/deposits/submit-utr', (req: Request, res: Respon
 
 // Auto-UPI Payment Webpage
 depositPageRouter.get('/pay', async (req: Request, res: Response) => {
-  const rawUserId = (req.query.userId as string);
-  if (!rawUserId || !/^[a-zA-Z0-9_-]+$/.test(rawUserId)) {
-    return res.status(400).send('<div style="padding: 20px; font-family: sans-serif; text-align: center; color: red;"><h3>Error: Valid userId parameter is required to access payment gateway.</h3></div>');
+  let authenticatedUserId = '';
+  const token = (req.query.token as string) || (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7).trim() : '');
+  if (token) {
+    try {
+      const decoded: any = jwt.verify(token, envConfig.jwtSecret);
+      authenticatedUserId = decoded.userId || decoded.id || '';
+    } catch {}
   }
-  const userId = rawUserId;
-  const amountStr = (req.query.amount as string) || '200';
+
   const rawOrderId = req.query.orderId as string;
   let orderId = rawOrderId && /^[a-zA-Z0-9_-]+$/.test(rawOrderId) ? rawOrderId : '';
+  const existingOrder = orderId ? FinancialService.getDeposit(orderId) : undefined;
 
+  let userId = authenticatedUserId;
+  if (!userId && existingOrder) {
+    userId = existingOrder.userId;
+  }
+  if (!userId) {
+    userId = (req.query.userId as string);
+  }
+
+  if (!userId || !/^[a-zA-Z0-9_-]+$/.test(userId)) {
+    return res.status(400).send('<div style="padding: 20px; font-family: sans-serif; text-align: center; color: red;"><h3>Error: Valid authenticated session or userId required to access payment gateway.</h3></div>');
+  }
+
+  if (authenticatedUserId) {
+    if (existingOrder && existingOrder.userId !== authenticatedUserId) {
+      return res.status(403).send('<div style="padding: 20px; font-family: sans-serif; text-align: center; color: red;"><h3>Error: Unauthorized access to deposit order.</h3></div>');
+    }
+    userId = authenticatedUserId;
+  }
+
+  const amountStr = (req.query.amount as string) || '200';
   const amountRupees = Math.max(1, Math.min(50000, parseFloat(amountStr) || 200));
 
   // Idempotency: When visited without orderId (first landing or refresh), lock to existing pending order or create once
@@ -112,14 +164,15 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
     }
 
     // Redirect to canonical URL with orderId so browser refresh NEVER creates a new request
-    return res.redirect(302, `/pay?orderId=${encodeURIComponent(orderId)}&userId=${encodeURIComponent(userId)}&amount=${amountRupees}`);
+    const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+    return res.redirect(302, `/pay?orderId=${encodeURIComponent(orderId)}&userId=${encodeURIComponent(userId)}&amount=${amountRupees}${tokenParam}`);
   }
 
   // Load order details
-  const existingOrder = FinancialService.getDeposit(orderId);
-  const finalAmount = existingOrder ? existingOrder.amountRupees : amountRupees;
-  const initialStatus = existingOrder ? existingOrder.status : 'PENDING';
-  const hasUtr = !!(existingOrder && existingOrder.utr);
+  const currentOrder = existingOrder || FinancialService.getDeposit(orderId);
+  const finalAmount = currentOrder ? currentOrder.amountRupees : amountRupees;
+  const initialStatus = currentOrder ? currentOrder.status : 'PENDING';
+  const hasUtr = !!(currentOrder && currentOrder.utr);
 
   const upiIntentUri = `upi://pay?pa=${encodeURIComponent(MERCHANT_UPI_ID)}&pn=${encodeURIComponent(MERCHANT_NAME)}&am=${finalAmount.toFixed(2)}&cu=INR&tr=${orderId}`;
 
@@ -847,5 +900,8 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
 </html>
   `;
 
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.send(html);
 });

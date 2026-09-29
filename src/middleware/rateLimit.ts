@@ -41,3 +41,10 @@ export function createRateLimiter(windowMs: number, maxRequests: number) {
     next();
   };
 }
+
+/**
+ * Dedicated brute-force protection for admin login:
+ * Max 5 attempts per IP per 15 minutes.
+ * Significantly stricter than the general authRateLimit (20 req/min).
+ */
+export const adminLoginRateLimit = createRateLimiter(15 * 60_000, 5);

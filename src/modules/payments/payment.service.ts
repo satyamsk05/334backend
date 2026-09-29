@@ -28,8 +28,8 @@ export class PaymentService {
     return FinancialService.getAllDeposits();
   }
 
-  public static async approveDeposit(depositId: string): Promise<{ success: boolean; message: string; record?: DepositRecord }> {
-    const res = await FinancialService.approveDeposit(depositId);
+  public static async approveDeposit(depositId: string, idempotencyKey?: string): Promise<{ success: boolean; message: string; record?: DepositRecord }> {
+    const res = await FinancialService.approveDeposit(depositId, idempotencyKey);
     return {
       success: res.success,
       message: res.message,
@@ -37,8 +37,8 @@ export class PaymentService {
     };
   }
 
-  public static rejectDeposit(depositId: string): { success: boolean; message: string; record?: DepositRecord } {
-    const res = FinancialService.rejectDeposit(depositId);
+  public static async rejectDeposit(depositId: string, idempotencyKey?: string): Promise<{ success: boolean; message: string; record?: DepositRecord }> {
+    const res = await FinancialService.rejectDeposit(depositId, idempotencyKey);
     return {
       success: res.success,
       message: res.message,
@@ -59,11 +59,11 @@ export class PaymentService {
     return FinancialService.processWithdrawal(withdrawalId);
   }
 
-  public static approveWithdrawal(withdrawalId: string): { success: boolean; message: string; record?: WithdrawalRecord } {
-    return FinancialService.approveWithdrawal(withdrawalId);
+  public static async approveWithdrawal(withdrawalId: string, idempotencyKey?: string): Promise<{ success: boolean; message: string; record?: WithdrawalRecord }> {
+    return await FinancialService.approveWithdrawal(withdrawalId, idempotencyKey);
   }
 
-  public static async rejectWithdrawal(withdrawalId: string): Promise<{ success: boolean; message: string; record?: WithdrawalRecord }> {
-    return await FinancialService.rejectWithdrawal(withdrawalId);
+  public static async rejectWithdrawal(withdrawalId: string, idempotencyKey?: string): Promise<{ success: boolean; message: string; record?: WithdrawalRecord }> {
+    return await FinancialService.rejectWithdrawal(withdrawalId, idempotencyKey);
   }
 }

@@ -28,8 +28,10 @@ async function resetAllData() {
     }
 
     const financialLedgerPath = path.join(dataDir, 'financial_ledger.json');
-    fs.writeFileSync(financialLedgerPath, JSON.stringify({ deposits: [], withdrawals: [] }, null, 2), 'utf-8');
-    console.log('✅ Cleared financial_ledger.json');
+    if (fs.existsSync(financialLedgerPath)) {
+      fs.unlinkSync(financialLedgerPath);
+      console.log('✅ Removed deprecated financial_ledger.json');
+    }
 
     const usersLedgerPath = path.join(dataDir, 'users_ledger.json');
     fs.writeFileSync(usersLedgerPath, JSON.stringify([], null, 2), 'utf-8');

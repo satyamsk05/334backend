@@ -1,5 +1,4 @@
-import fs from 'fs';
-import path from 'path';
+import crypto from 'crypto';
 import {
   DepositOrder,
   DepositStatus,
@@ -10,57 +9,72 @@ import { WalletService } from '../modules/wallet/wallet.service';
 import { TelegramBotService } from './TelegramBotService';
 import { AuthService } from '../modules/auth/auth.service';
 import { SocketServer } from '../sockets/socket.server';
-
-const LEDGER_FILE = path.join(__dirname, '../../data/financial_ledger.json');
-
-function loadLedger(): { deposits: DepositOrder[]; withdrawals: WithdrawalRecord[] } {
-  try {
-    if (fs.existsSync(LEDGER_FILE)) {
-      const data = JSON.parse(fs.readFileSync(LEDGER_FILE, 'utf-8'));
-      return {
-        deposits: Array.isArray(data.deposits) ? data.deposits : [],
-        withdrawals: Array.isArray(data.withdrawals) ? data.withdrawals : []
-      };
-    }
-  } catch (e) {
-    console.error('Failed to load financial ledger from disk:', e);
-  }
-  return {
-    deposits: [],
-    withdrawals: []
-  };
-}
-
-const initialLedger = loadLedger();
+import { DatabaseConfig } from '../config/db.config';
 
 export class FinancialService {
-  private static depositOrders = new Map<string, DepositOrder>(
-    initialLedger.deposits.map(d => [d.depositId, d])
-  );
-  private static withdrawalRecords = new Map<string, WithdrawalRecord>(
-    initialLedger.withdrawals.map(w => [w.withdrawalId, w])
-  );
+  private static inFlightOps = new Set<string>();
+  private static depositOrders = new Map<string, DepositOrder>();
+  private static withdrawalRecords = new Map<string, WithdrawalRecord>();
+
+  /**
+   * Initializes financial records directly from PostgreSQL (single source of truth).
+   */
+  public static async initFromPostgres(): Promise<void> {
+    try {
+      const pool = DatabaseConfig.getPool();
+      if (!pool) return;
+
+      const [depositsRes, withdrawalsRes] = await Promise.all([
+        pool.query(`SELECT * FROM deposits ORDER BY created_at DESC LIMIT 1000`),
+        pool.query(`SELECT * FROM withdrawals ORDER BY created_at DESC LIMIT 1000`)
+      ]);
+
+      for (const row of depositsRes.rows) {
+        const depositId = row.deposit_id || row.id;
+        const amountPaise = Number(row.amount);
+        const order: DepositOrder = {
+          depositId,
+          userId: row.user_id,
+          amountRupees: amountPaise / 100,
+          amountPaise,
+          status: row.status as DepositStatus,
+          utr: row.utr || undefined,
+          createdAt: new Date(row.created_at).getTime(),
+          updatedAt: new Date(row.updated_at || row.created_at).getTime()
+        };
+        FinancialService.depositOrders.set(depositId, order);
+      }
+
+      for (const row of withdrawalsRes.rows) {
+        const withdrawalId = row.withdrawal_id || row.id;
+        const amountPaise = Number(row.amount);
+        const record: WithdrawalRecord = {
+          withdrawalId,
+          userId: row.user_id,
+          amountRupees: amountPaise / 100,
+          amountPaise,
+          payoutMethod: row.payout_method || 'UPI',
+          upiId: row.upi_id || row.payout_address_or_upi || '',
+          status: row.status as WithdrawalStatus,
+          createdAt: new Date(row.created_at).getTime(),
+          updatedAt: new Date(row.updated_at || row.created_at).getTime()
+        };
+        FinancialService.withdrawalRecords.set(withdrawalId, record);
+      }
+    } catch (e: any) {
+      console.warn('[FINANCIAL] PostgreSQL load note:', e.message);
+    }
+  }
 
   private static persist() {
-    try {
-      const dir = path.dirname(LEDGER_FILE);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(LEDGER_FILE, JSON.stringify({
-        deposits: Array.from(FinancialService.depositOrders.values()),
-        withdrawals: Array.from(FinancialService.withdrawalRecords.values())
-      }, null, 2), 'utf-8');
-    } catch (e) {
-      console.error('Failed to persist financial ledger:', e);
-    }
+    // Deprecated: dual-write to financial_ledger.json removed.
+    // PostgreSQL is now the authoritative single source of truth.
   }
 
   public static initiateDeposit(userId: string, amountRupees: number): DepositOrder {
     AuthService.ensureUserExists(userId);
     const amountPaise = Math.round(amountRupees * 100);
-    const rand12 = Math.floor(100000000000 + Math.random() * 900000000000);
-    const depositId = `D${rand12}`;
+    const depositId = `DEP-${crypto.randomUUID()}`;
 
     const order: DepositOrder = {
       depositId,
@@ -74,6 +88,23 @@ export class FinancialService {
 
     FinancialService.depositOrders.set(depositId, order);
     FinancialService.persist();
+
+    // Sync to PostgreSQL deposits table
+    (async () => {
+      try {
+        const pool = DatabaseConfig.getPool();
+        if (pool) {
+          await pool.query(
+            `INSERT INTO deposits (id, deposit_id, user_id, amount, currency, status, payment_method, created_at, updated_at)
+             VALUES ($1, $1, $2, $3, 'INR', $4, 'UPI', to_timestamp($5 / 1000.0), CURRENT_TIMESTAMP)
+             ON CONFLICT (id) DO NOTHING`,
+            [order.depositId, order.userId, order.amountPaise, order.status, order.createdAt]
+          );
+        }
+      } catch (err: any) {
+        console.error('[FINANCIAL] Failed to sync initiated deposit to PostgreSQL:', err.message);
+      }
+    })();
 
     TelegramBotService.sendAlert(
       `💳 *Deposit Initiated*\nOrder: \`${depositId}\`\nUser: \`${userId}\`\nAmount: ₹${amountRupees.toFixed(2)}`
@@ -124,8 +155,8 @@ export class FinancialService {
         const pool = DatabaseConfig.getPool();
         if (pool) {
           await pool.query(
-            `INSERT INTO deposits (id, user_id, amount, status, utr, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, to_timestamp($6 / 1000.0), CURRENT_TIMESTAMP)
+            `INSERT INTO deposits (id, deposit_id, user_id, amount, currency, status, payment_method, utr, created_at, updated_at)
+             VALUES ($1, $1, $2, $3, 'INR', $4, 'UPI', $5, to_timestamp($6 / 1000.0), CURRENT_TIMESTAMP)
              ON CONFLICT (id) DO UPDATE
              SET status = EXCLUDED.status,
                  utr = COALESCE(EXCLUDED.utr, deposits.utr),
@@ -165,117 +196,172 @@ export class FinancialService {
       .sort((a, b) => b.createdAt - a.createdAt);
   }
 
-  public static async approveDeposit(depositId: string): Promise<{ success: boolean; message: string; order?: DepositOrder }> {
-    const order = FinancialService.depositOrders.get(depositId);
-    if (!order) return { success: false, message: 'Deposit order not found' };
-
-    if (order.status !== DepositStatus.PENDING) {
-      return { success: false, message: `Deposit is already ${order.status}` };
+  public static async approveDeposit(depositId: string, idempotencyKey?: string): Promise<{ success: boolean; message: string; order?: DepositOrder }> {
+    const opLock = `DEP_${depositId}`;
+    if (FinancialService.inFlightOps.has(opLock)) {
+      return { success: false, message: 'Deposit approval/rejection operation is currently in-flight' };
     }
+    FinancialService.inFlightOps.add(opLock);
 
-    let updatedBalance;
     try {
-      // Credit user deposit balance atomically in PostgreSQL FIRST
-      updatedBalance = await WalletService.creditDeposit(
-        order.userId,
-        order.amountPaise,
-        order.utr || order.depositId,
-        'Deposit Approved',
-        order.depositId
-      );
-    } catch (err: any) {
-      console.error('[FINANCIAL] Wallet credit failed during deposit approval:', err.message);
-      return { success: false, message: `Failed to credit wallet: ${err.message}` };
-    }
+      const order = FinancialService.depositOrders.get(depositId);
+      if (!order) return { success: false, message: 'Deposit order not found' };
 
-    order.status = DepositStatus.APPROVED;
-    order.updatedAt = Date.now();
-    FinancialService.depositOrders.set(depositId, order);
-    FinancialService.persist();
+      // Idempotency: If already approved, return success idempotently
+      if (order.status === DepositStatus.APPROVED) {
+        return { success: true, message: 'Deposit is already approved', order };
+      }
 
-    // Update PostgreSQL deposits table
-    (async () => {
-      try {
-        const { DatabaseConfig } = await import('../config/db.config');
-        const pool = DatabaseConfig.getPool();
-        if (pool) {
-          await pool.query(
-            `UPDATE deposits SET status = 'APPROVED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+      // Invalid transition: Cannot approve rejected deposit
+      if (order.status === DepositStatus.REJECTED) {
+        return { success: false, message: 'Cannot approve deposit in status REJECTED', order };
+      }
+
+      // Atomic DB conditional update (CAS)
+      const pool = DatabaseConfig.getPool();
+      if (pool) {
+        try {
+          await pool.query(`
+            CREATE TABLE IF NOT EXISTS deposits (
+              id VARCHAR(64) PRIMARY KEY,
+              user_id VARCHAR(64) NOT NULL,
+              amount BIGINT NOT NULL,
+              status VARCHAR(32) NOT NULL,
+              utr VARCHAR(128),
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+          `);
+          const updateRes = await pool.query(
+            `UPDATE deposits SET status = 'APPROVED', confirmed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE (id = $1 OR deposit_id = $1) AND status = 'PENDING' RETURNING *;`,
             [order.depositId]
           );
+          if (updateRes.rowCount === 0) {
+            const checkRes = await pool.query(`SELECT status FROM deposits WHERE (id = $1 OR deposit_id = $1)`, [order.depositId]);
+            if (checkRes.rows.length === 0) {
+              await pool.query(
+                `INSERT INTO deposits (id, deposit_id, user_id, amount, currency, status, payment_method, utr, confirmed_at, created_at, updated_at)
+                 VALUES ($1, $1, $2, $3, 'INR', 'APPROVED', 'UPI', $4, CURRENT_TIMESTAMP, to_timestamp($5 / 1000.0), CURRENT_TIMESTAMP)
+                 ON CONFLICT (id) DO UPDATE SET status = 'APPROVED', confirmed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP`,
+                [order.depositId, order.userId, order.amountPaise, order.utr || null, order.createdAt]
+              );
+            } else if (checkRes.rows[0].status === 'APPROVED') {
+              order.status = DepositStatus.APPROVED;
+              return { success: true, message: 'Deposit already approved', order };
+            } else if (checkRes.rows[0].status === 'REJECTED') {
+              order.status = DepositStatus.REJECTED;
+              return { success: false, message: 'Cannot approve deposit in status REJECTED', order };
+            }
+          }
+        } catch (err: any) {
+          console.warn('[FINANCIAL] Failed to update deposit status in PostgreSQL:', err.message);
         }
-      } catch (err: any) {
-        console.error('[FINANCIAL] Failed to update deposit status in PostgreSQL:', err.message);
       }
-    })();
 
-    // Live sync over WebSockets to client app & webpage
-    try {
-      SocketServer.emitToUser(order.userId, 'WALLET_UPDATE', {
-        userId: order.userId,
-        depositPaise: updatedBalance.depositPaise,
-        winningPaise: updatedBalance.winningPaise,
-        bonusPaise: updatedBalance.bonusPaise,
-        totalPaise: updatedBalance.totalPaise,
-        depositRupees: updatedBalance.depositPaise / 100,
-        winningRupees: updatedBalance.winningPaise / 100,
-        bonusRupees: updatedBalance.bonusPaise / 100,
-        totalRupees: updatedBalance.totalPaise / 100
-      });
-      SocketServer.emitToUser(order.userId, 'DEPOSIT_STATUS', {
-        depositId: order.depositId,
-        status: DepositStatus.APPROVED,
-        amountRupees: order.amountRupees
-      });
-      SocketServer.broadcast('WALLET_UPDATE', {
-        userId: order.userId,
-        wallet: updatedBalance
-      });
-    } catch (err) {
-      console.error('Socket notification error on deposit approval:', err);
+      const idempKey = idempotencyKey || `DEP_APPR_${order.depositId}`;
+      let updatedBalance;
+      try {
+        // Credit user deposit balance atomically in PostgreSQL
+        updatedBalance = await WalletService.creditDeposit(
+          order.userId,
+          order.amountPaise,
+          order.utr || order.depositId,
+          'Deposit Approved',
+          idempKey
+        );
+      } catch (err: any) {
+        console.error('[FINANCIAL] Wallet credit failed during deposit approval:', err.message);
+        return { success: false, message: `Failed to credit wallet: ${err.message}` };
+      }
+
+      order.status = DepositStatus.APPROVED;
+      order.updatedAt = Date.now();
+      FinancialService.depositOrders.set(depositId, order);
+      FinancialService.persist();
+
+      // Live sync over WebSockets to client app & webpage
+      try {
+        SocketServer.emitToUser(order.userId, 'WALLET_UPDATE', {
+          userId: order.userId,
+          depositPaise: updatedBalance.depositPaise,
+          winningPaise: updatedBalance.winningPaise,
+          bonusPaise: updatedBalance.bonusPaise,
+          totalPaise: updatedBalance.totalPaise,
+          depositRupees: updatedBalance.depositPaise / 100,
+          winningRupees: updatedBalance.winningPaise / 100,
+          bonusRupees: updatedBalance.bonusPaise / 100,
+          totalRupees: updatedBalance.totalPaise / 100
+        });
+        SocketServer.emitToUser(order.userId, 'DEPOSIT_STATUS', {
+          depositId: order.depositId,
+          status: DepositStatus.APPROVED,
+          amountRupees: order.amountRupees
+        });
+        SocketServer.emitToUser(order.userId, 'WALLET_UPDATE', {
+          userId: order.userId,
+          wallet: updatedBalance
+        });
+      } catch (err) {
+        console.error('Socket notification error on deposit approval:', err);
+      }
+
+      TelegramBotService.sendAlert(
+        `✅ *Deposit Approved*\nOrder: \`${depositId}\`\nUser: \`${order.userId}\`\nAmount: ₹${order.amountRupees.toFixed(2)}`
+      );
+
+      return { success: true, message: `Deposit ₹${order.amountRupees} approved and credited!`, order };
+    } finally {
+      FinancialService.inFlightOps.delete(opLock);
     }
-
-    TelegramBotService.sendAlert(
-      `✅ *Deposit Approved*\nOrder: \`${depositId}\`\nUser: \`${order.userId}\`\nAmount: ₹${order.amountRupees.toFixed(2)}`
-    );
-
-    return { success: true, message: `Deposit ₹${order.amountRupees} approved and credited!`, order };
   }
 
-  public static rejectDeposit(depositId: string): { success: boolean; message: string; order?: DepositOrder } {
-    const order = FinancialService.depositOrders.get(depositId);
-    if (!order) return { success: false, message: 'Deposit order not found' };
-
-    if (order.status !== DepositStatus.PENDING) {
-      return { success: false, message: `Deposit is already ${order.status}` };
+  public static async rejectDeposit(depositId: string, _idempotencyKey?: string): Promise<{ success: boolean; message: string; order?: DepositOrder }> {
+    const opLock = `DEP_${depositId}`;
+    if (FinancialService.inFlightOps.has(opLock)) {
+      return { success: false, message: 'Deposit approval/rejection operation is currently in-flight' };
     }
+    FinancialService.inFlightOps.add(opLock);
 
-    order.status = DepositStatus.REJECTED;
-    order.updatedAt = Date.now();
-    FinancialService.depositOrders.set(depositId, order);
-    FinancialService.persist();
+    try {
+      const order = FinancialService.depositOrders.get(depositId);
+      if (!order) return { success: false, message: 'Deposit order not found' };
 
-    // Update PostgreSQL deposits table
-    (async () => {
-      try {
-        const { DatabaseConfig } = await import('../config/db.config');
-        const pool = DatabaseConfig.getPool();
-        if (pool) {
+      // Idempotency: If already rejected, return success idempotently
+      if (order.status === DepositStatus.REJECTED) {
+        return { success: true, message: 'Deposit is already rejected', order };
+      }
+
+      // Invalid transition: Cannot reject already approved deposit
+      if (order.status === DepositStatus.APPROVED) {
+        return { success: false, message: 'Cannot reject already approved deposit', order };
+      }
+
+      // Update PostgreSQL deposits table with state condition
+      const pool = DatabaseConfig.getPool();
+      if (pool) {
+        try {
           await pool.query(
-            `UPDATE deposits SET status = 'REJECTED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
+            `UPDATE deposits SET status = 'REJECTED', updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'PENDING'`,
             [order.depositId]
           );
+        } catch (err: any) {
+          console.error('[FINANCIAL] Failed to update deposit status in PostgreSQL:', err.message);
         }
-      } catch (err: any) {
-        console.error('[FINANCIAL] Failed to update deposit status in PostgreSQL:', err.message);
       }
-    })();
 
-    TelegramBotService.sendAlert(
-      `❌ *Deposit Rejected*\nOrder: \`${depositId}\`\nUser: \`${order.userId}\`\nAmount: ₹${order.amountRupees.toFixed(2)}`
-    );
+      order.status = DepositStatus.REJECTED;
+      order.updatedAt = Date.now();
+      FinancialService.depositOrders.set(depositId, order);
+      FinancialService.persist();
 
-    return { success: true, message: `Deposit request rejected.`, order };
+      TelegramBotService.sendAlert(
+        `❌ *Deposit Rejected*\nOrder: \`${depositId}\`\nUser: \`${order.userId}\`\nAmount: ₹${order.amountRupees.toFixed(2)}`
+      );
+
+      return { success: true, message: `Deposit request rejected.`, order };
+    } finally {
+      FinancialService.inFlightOps.delete(opLock);
+    }
   }
 
   // Withdrawals Queue
@@ -291,8 +377,7 @@ export class FinancialService {
     if (amountPaise < minPaise) return { success: false, message: 'Minimum withdrawal amount is ₹25' };
     if (amountPaise > maxPaise) return { success: false, message: 'Maximum withdrawal amount is ₹5,000 per request' };
 
-    const rand12 = Math.floor(100000000000 + Math.random() * 900000000000);
-    const withdrawalId = `T${rand12}`;
+    const withdrawalId = `WDR-${crypto.randomUUID()}`;
 
     // Debit winnings atomically in PostgreSQL
     const debitRes = await WalletService.debitWithdrawal(userId, amountPaise, withdrawalId, upiId);
@@ -314,6 +399,34 @@ export class FinancialService {
 
     FinancialService.withdrawalRecords.set(withdrawalId, record);
     FinancialService.persist();
+
+    // Sync to PostgreSQL withdrawals table
+    (async () => {
+      try {
+        const pool = DatabaseConfig.getPool();
+        if (pool) {
+          await pool.query(`
+            CREATE TABLE IF NOT EXISTS withdrawals (
+              id VARCHAR(64) PRIMARY KEY,
+              user_id VARCHAR(64) NOT NULL,
+              amount BIGINT NOT NULL,
+              status VARCHAR(32) NOT NULL,
+              upi_id VARCHAR(128),
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+          `);
+          await pool.query(
+            `INSERT INTO withdrawals (id, withdrawal_id, user_id, amount, currency, status, payout_method, payout_address_or_upi, upi_id, created_at, updated_at)
+             VALUES ($1, $1, $2, $3, 'INR', $4, 'UPI', $5, $5, to_timestamp($6 / 1000.0), CURRENT_TIMESTAMP)
+             ON CONFLICT (id) DO NOTHING`,
+            [record.withdrawalId, record.userId, record.amountPaise, record.status, record.upiId, record.createdAt]
+          );
+        }
+      } catch (err: any) {
+        console.error('[FINANCIAL] Failed to sync withdrawal to PostgreSQL:', err.message);
+      }
+    })();
 
     TelegramBotService.sendAlert(
       `💸 *New Withdrawal Request Pending*\nID: \`${withdrawalId}\`\nUser: \`${userId}\`\nAmount: ₹${amountRupees.toFixed(2)}\nUPI: \`${upiId}\``
@@ -363,79 +476,160 @@ export class FinancialService {
     return { success: true, message: `Withdrawal ${withdrawalId} moved to PROCESSING!`, record };
   }
 
-  public static approveWithdrawal(withdrawalId: string): { success: boolean; message: string; record?: WithdrawalRecord } {
-    const record = FinancialService.withdrawalRecords.get(withdrawalId);
-    if (!record) return { success: false, message: 'Withdrawal record not found' };
-
-    if (record.status !== WithdrawalStatus.PENDING && record.status !== WithdrawalStatus.PROCESSING) {
-      return { success: false, message: `Withdrawal is already ${record.status}` };
+  public static async approveWithdrawal(withdrawalId: string, _idempotencyKey?: string): Promise<{ success: boolean; message: string; record?: WithdrawalRecord }> {
+    const opLock = `WD_${withdrawalId}`;
+    if (FinancialService.inFlightOps.has(opLock)) {
+      return { success: false, message: 'Withdrawal operation is currently in-flight' };
     }
-
-    record.status = WithdrawalStatus.APPROVED;
-    record.updatedAt = Date.now();
-    FinancialService.withdrawalRecords.set(withdrawalId, record);
-    FinancialService.persist();
+    FinancialService.inFlightOps.add(opLock);
 
     try {
-      SocketServer.emitToUser(record.userId, 'WITHDRAWAL_STATUS', {
-        withdrawalId: record.withdrawalId,
-        status: WithdrawalStatus.APPROVED,
-        amountRupees: record.amountRupees
-      });
-    } catch (e) {
-      console.error('Socket error on withdrawal approval:', e);
+      const record = FinancialService.withdrawalRecords.get(withdrawalId);
+      if (!record) return { success: false, message: 'Withdrawal record not found' };
+
+      // Idempotency: If already approved, return success
+      if (record.status === WithdrawalStatus.APPROVED) {
+        return { success: true, message: 'Withdrawal is already approved', record };
+      }
+
+      // Invalid transition: Cannot approve already rejected withdrawal
+      if (record.status === WithdrawalStatus.REJECTED) {
+        return { success: false, message: 'Cannot approve already rejected withdrawal', record };
+      }
+
+      // Atomic DB conditional update
+      const pool = DatabaseConfig.getPool();
+      if (pool) {
+        try {
+          await pool.query(`
+            CREATE TABLE IF NOT EXISTS withdrawals (
+              id VARCHAR(64) PRIMARY KEY,
+              user_id VARCHAR(64) NOT NULL,
+              amount BIGINT NOT NULL,
+              status VARCHAR(32) NOT NULL,
+              upi_id VARCHAR(128),
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+          `);
+          await pool.query(
+            `UPDATE withdrawals SET status = 'APPROVED', completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE (id = $1 OR withdrawal_id = $1) AND status IN ('PENDING', 'PROCESSING')`,
+            [record.withdrawalId]
+          );
+        } catch (e: any) {
+          console.warn('[FINANCIAL] DB withdrawal approve warning:', e.message);
+        }
+      }
+
+      record.status = WithdrawalStatus.APPROVED;
+      record.updatedAt = Date.now();
+      FinancialService.withdrawalRecords.set(withdrawalId, record);
+      FinancialService.persist();
+
+      try {
+        SocketServer.emitToUser(record.userId, 'WITHDRAWAL_STATUS', {
+          withdrawalId: record.withdrawalId,
+          status: WithdrawalStatus.APPROVED,
+          amountRupees: record.amountRupees
+        });
+      } catch (e) {
+        console.error('Socket error on withdrawal approval:', e);
+      }
+
+      TelegramBotService.sendAlert(
+        `✅ *Withdrawal Approved & Paid*\nID: \`${withdrawalId}\`\nUser: \`${record.userId}\`\nAmount: ₹${record.amountRupees.toFixed(2)}\nUPI: \`${record.upiId}\``
+      );
+
+      return { success: true, message: `Withdrawal of ₹${record.amountRupees} approved and paid out!`, record };
+    } finally {
+      FinancialService.inFlightOps.delete(opLock);
     }
-
-    TelegramBotService.sendAlert(
-      `✅ *Withdrawal Approved & Paid*\nID: \`${withdrawalId}\`\nUser: \`${record.userId}\`\nAmount: ₹${record.amountRupees.toFixed(2)}\nUPI: \`${record.upiId}\``
-    );
-
-    return { success: true, message: `Withdrawal of ₹${record.amountRupees} approved and paid out!`, record };
   }
 
-  public static async rejectWithdrawal(withdrawalId: string): Promise<{ success: boolean; message: string; record?: WithdrawalRecord }> {
-    const record = FinancialService.withdrawalRecords.get(withdrawalId);
-    if (!record) return { success: false, message: 'Withdrawal request not found' };
-
-    if (record.status !== WithdrawalStatus.PENDING && record.status !== WithdrawalStatus.PROCESSING) {
-      return { success: false, message: `Withdrawal is already ${record.status}` };
+  public static async rejectWithdrawal(withdrawalId: string, idempotencyKey?: string): Promise<{ success: boolean; message: string; record?: WithdrawalRecord }> {
+    const opLock = `WD_${withdrawalId}`;
+    if (FinancialService.inFlightOps.has(opLock)) {
+      return { success: false, message: 'Withdrawal operation is currently in-flight' };
     }
-
-    record.status = WithdrawalStatus.REJECTED;
-    record.updatedAt = Date.now();
-    FinancialService.withdrawalRecords.set(withdrawalId, record);
-    FinancialService.persist();
-
-    // Refund debited winnings back to user atomically in PostgreSQL
-    const updatedWallet = await WalletService.refundWithdrawal(record.userId, record.amountPaise, withdrawalId);
+    FinancialService.inFlightOps.add(opLock);
 
     try {
-      SocketServer.emitToUser(record.userId, 'WITHDRAWAL_STATUS', {
-        withdrawalId: record.withdrawalId,
-        status: WithdrawalStatus.REJECTED,
-        amountRupees: record.amountRupees
-      });
-      if (updatedWallet) {
-        SocketServer.emitToUser(record.userId, 'WALLET_UPDATE', {
-          userId: record.userId,
-          depositPaise: updatedWallet.depositPaise,
-          winningPaise: updatedWallet.winningPaise,
-          bonusPaise: updatedWallet.bonusPaise,
-          totalPaise: updatedWallet.totalPaise,
-          depositRupees: updatedWallet.depositPaise / 100,
-          winningRupees: updatedWallet.winningPaise / 100,
-          bonusRupees: updatedWallet.bonusPaise / 100,
-          totalRupees: updatedWallet.totalPaise / 100
-        });
+      const record = FinancialService.withdrawalRecords.get(withdrawalId);
+      if (!record) return { success: false, message: 'Withdrawal request not found' };
+
+      // Idempotency: If already rejected, return success
+      if (record.status === WithdrawalStatus.REJECTED) {
+        return { success: true, message: 'Withdrawal is already rejected', record };
       }
-    } catch (e) {
-      console.error('Socket error on withdrawal rejection:', e);
+
+      // Invalid transition: Cannot reject already approved withdrawal
+      if (record.status === WithdrawalStatus.APPROVED) {
+        return { success: false, message: 'Cannot reject already approved and paid-out withdrawal', record };
+      }
+
+      // Atomic DB conditional update
+      const pool = DatabaseConfig.getPool();
+      if (pool) {
+        try {
+          await pool.query(`
+            CREATE TABLE IF NOT EXISTS withdrawals (
+              id VARCHAR(64) PRIMARY KEY,
+              user_id VARCHAR(64) NOT NULL,
+              amount BIGINT NOT NULL,
+              status VARCHAR(32) NOT NULL,
+              upi_id VARCHAR(128),
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+          `);
+          await pool.query(
+            `UPDATE withdrawals SET status = 'REJECTED', rejected_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE (id = $1 OR withdrawal_id = $1) AND status IN ('PENDING', 'PROCESSING')`,
+            [record.withdrawalId]
+          );
+        } catch (e: any) {
+          console.warn('[FINANCIAL] DB withdrawal reject warning:', e.message);
+        }
+      }
+
+      record.status = WithdrawalStatus.REJECTED;
+      record.updatedAt = Date.now();
+      FinancialService.withdrawalRecords.set(withdrawalId, record);
+      FinancialService.persist();
+
+      // Refund debited winnings back to user atomically in PostgreSQL with idempotency
+      const idempKey = idempotencyKey || `REF-${withdrawalId}`;
+      const updatedWallet = await WalletService.refundWithdrawal(record.userId, record.amountPaise, withdrawalId, idempKey);
+
+      try {
+        SocketServer.emitToUser(record.userId, 'WITHDRAWAL_STATUS', {
+          withdrawalId: record.withdrawalId,
+          status: WithdrawalStatus.REJECTED,
+          amountRupees: record.amountRupees
+        });
+        if (updatedWallet) {
+          SocketServer.emitToUser(record.userId, 'WALLET_UPDATE', {
+            userId: record.userId,
+            depositPaise: updatedWallet.depositPaise,
+            winningPaise: updatedWallet.winningPaise,
+            bonusPaise: updatedWallet.bonusPaise,
+            totalPaise: updatedWallet.totalPaise,
+            depositRupees: updatedWallet.depositPaise / 100,
+            winningRupees: updatedWallet.winningPaise / 100,
+            bonusRupees: updatedWallet.bonusPaise / 100,
+            totalRupees: updatedWallet.totalPaise / 100
+          });
+        }
+      } catch (e) {
+        console.error('Socket error on withdrawal rejection:', e);
+      }
+
+      TelegramBotService.sendAlert(
+        `❌ *Withdrawal Rejected & Refunded*\nID: \`${withdrawalId}\`\nUser: \`${record.userId}\`\nAmount: ₹${record.amountRupees.toFixed(2)}`
+      );
+
+      return { success: true, message: `Withdrawal rejected and ₹${record.amountRupees} refunded to winnings balance.`, record };
+    } finally {
+      FinancialService.inFlightOps.delete(opLock);
     }
-
-    TelegramBotService.sendAlert(
-      `❌ *Withdrawal Rejected & Refunded*\nID: \`${withdrawalId}\`\nUser: \`${record.userId}\`\nAmount: ₹${record.amountRupees.toFixed(2)}`
-    );
-
-    return { success: true, message: `Withdrawal rejected and ₹${record.amountRupees} refunded to winnings balance.`, record };
   }
 }

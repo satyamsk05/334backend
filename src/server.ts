@@ -6,6 +6,8 @@ import { RedisConfig } from './config/redis.config';
 import { SocketServer } from './sockets/socket.server';
 import { RingOfFutureEngine } from './game/RingOfFutureEngine';
 import { TicTacToeEngine } from './game/TicTacToeEngine';
+import { FinancialService } from './services/FinancialService';
+import { AdminSchema } from './database/adminSchema';
 import { Logger } from './utils/logger';
 
 async function bootstrap() {
@@ -18,6 +20,14 @@ async function bootstrap() {
 
   DatabaseConfig.getPool();
   SocketServer.init(server);
+
+  // Initialize Database Schema & Admin Tables
+  await AdminSchema.init();
+
+  // Initialize Authoritative Financial State from PostgreSQL
+  FinancialService.initFromPostgres().catch((err: any) => {
+    Logger.warn('[FINANCIAL] Background init note:', err.message);
+  });
 
   const shutdown = async (signal: string): Promise<void> => {
     if (shuttingDown) return;

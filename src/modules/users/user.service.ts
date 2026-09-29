@@ -24,13 +24,4 @@ export class UserService {
   public static toggleBan(userId: string, isBanned: boolean) {
     return AuthService.toggleBanStatus(userId, isBanned);
   }
-
-  public static async adjustWallet(userId: string, type: 'ADD' | 'DEDUCT', amountRupees: number) {
-    const amountPaise = Math.round(amountRupees * 100);
-    if (type === 'ADD') {
-      return await WalletService.creditDeposit(userId, amountPaise, `ADMIN-ADD-${Date.now()}`, 'Admin Wallet Credit');
-    } else {
-      return await WalletService.debitBet(userId, amountPaise, `ADMIN-DEDUCT-${Date.now()}`, 'Admin Wallet Deduction');
-    }
-  }
 }

@@ -9,8 +9,25 @@ import { SocketServer } from '../../sockets/socket.server';
 import { AuthService } from '../auth/auth.service';
 import { PushNotificationService } from '../../services/PushNotificationService';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 
 export class AdminController {
+  // ==========================================
+  // SESSION VERIFICATION
+  // ==========================================
+  public static async getMe(req: Request, res: Response) {
+    const admin = (req as any).admin;
+    if (!admin) {
+      return ResponseHandler.error(res, 'Session not authenticated', 401);
+    }
+    return ResponseHandler.success(res, {
+      id: admin.id,
+      username: admin.username,
+      role: admin.role,
+      permissions: admin.permissions || []
+    }, 'Admin session verified');
+  }
+
   // ==========================================
   // DASHBOARD & ANALYTICS
   // ==========================================
@@ -292,6 +309,16 @@ export class AdminController {
     const userId = req.params.id;
     if (!userId) return ResponseHandler.error(res, 'User ID is required', 400);
 
+    // Determine caller's role for field-level masking
+    const callerAdmin = (req as any).admin;
+    const callerRole: string = callerAdmin?.role || 'VIEWER';
+    // Roles that may see full PII (phone, IP, device, sessions)
+    const canSeePII = ['SUPER_ADMIN', 'ADMIN', 'FINANCE_ADMIN'].includes(callerRole);
+    // Roles that may see financial data (wallets, deposits, withdrawals)
+    const canSeeFinancials = ['SUPER_ADMIN', 'ADMIN', 'FINANCE_ADMIN'].includes(callerRole);
+    // Roles that may see audit trail and session logs
+    const canSeeAudit = ['SUPER_ADMIN', 'ADMIN'].includes(callerRole);
+
     try {
       const userRes = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
       if (userRes.rows.length === 0) {
@@ -405,12 +432,20 @@ export class AdminController {
       const totalWithdrawalsPaise = approvedWithdrawals.reduce((sum: number, w: any) => sum + Number(w.amount || 0), 0);
       const pendingWithdrawalsPaise = withdrawalsRes.rows.filter((w: any) => w.status === 'PENDING').reduce((sum: number, w: any) => sum + Number(w.amount || 0), 0);
 
+      // ── Role-based field-level masking ──────────────────────────────────────
+      // Phone: last 4 visible to all; full number only for privileged roles
+      const rawPhone: string = u.phone || AuthService.getUserById(u.id)?.phone || '';
+      const maskedPhone = rawPhone.length >= 4
+        ? `******${rawPhone.slice(-4)}`
+        : '**masked**';
+
       const userPayload = {
         id: u.id,
         name: u.username || AuthService.getUserById(u.id)?.name || 'Player',
         username: u.username || AuthService.getUserById(u.id)?.name || 'Player',
-        phone: u.phone || AuthService.getUserById(u.id)?.phone || '',
-        email: u.email || '',
+        // PII: full phone only for privileged roles
+        phone: canSeePII ? rawPhone : maskedPhone,
+        email: canSeePII ? (u.email || '') : '[restricted]',
         avatarPath: u.avatar_path,
         is_blocked: Boolean(u.is_blocked),
         isBanned: Boolean(u.is_blocked),
@@ -419,17 +454,19 @@ export class AdminController {
         created_at: u.created_at,
         createdAt: u.created_at,
         updated_at: u.updated_at || u.created_at,
-        device_model: u.device_model || 'Unknown Android Device',
-        os_version: u.os_version || 'Android',
-        app_version: u.app_version || '1.0.0',
-        ip_address: u.ip_address || '127.0.0.1',
-        location: u.location || 'India',
+        // Device/session fields: only for privileged roles
+        device_model: canSeePII ? (u.device_model || 'Unknown Android Device') : '[restricted]',
+        os_version: canSeePII ? (u.os_version || 'Android') : '[restricted]',
+        app_version: u.app_version || '1.0.0', // app version is not sensitive
+        ip_address: canSeePII ? (u.ip_address || '127.0.0.1') : '[restricted]',
+        location: canSeePII ? (u.location || 'India') : '[restricted]',
         lastActive: u.last_sign_in_at || u.created_at,
         totalGames: totalBetsCount > 0 ? 1 : 0,
         totalBets: totalBetsCount,
         totalWageredPaise,
         totalPayoutsPaise: totalPayoutPaise
       };
+      // ────────────────────────────────────────────────────────────────────────
 
       const walletPayload = {
         deposit_balance: String(w.deposit_balance || 0),
@@ -473,34 +510,41 @@ export class AdminController {
         overview: userPayload,
         wallet: walletPayload,
         metrics: metricsPayload,
-        financialSummary: {
+        financialSummary: canSeeFinancials ? {
           totalDepositsPaise,
           pendingDepositsPaise,
           totalWithdrawalsPaise,
           pendingWithdrawalsPaise,
           approvedTransactionsCount: approvedDeposits.length + approvedWithdrawals.length,
           rejectedTransactionsCount: depositsRes.rows.filter((d: any) => d.status === 'REJECTED').length + withdrawalsRes.rows.filter((w: any) => w.status === 'REJECTED').length
-        },
-        transactions: mappedTransactions,
-        recentTransactions: mappedTransactions,
-        deposits: depositsRes.rows.map((d: any) => ({
+        } : null,
+        transactions: canSeeFinancials ? mappedTransactions : [],
+        recentTransactions: canSeeFinancials ? mappedTransactions : [],
+        deposits: canSeeFinancials ? depositsRes.rows.map((d: any) => ({
           ...d,
           amount: Number(d.amount)
-        })),
-        withdrawals: withdrawalsRes.rows.map((w: any) => ({
+        })) : [],
+        withdrawals: canSeeFinancials ? withdrawalsRes.rows.map((w: any) => ({
           ...w,
           amount: Number(w.amount)
-        })),
+        })) : [],
         bets: allBets,
         recentBets: allBets,
         gameHistory: allBets,
         notes: notesRes.rows || [],
         adminNotes: notesRes.rows || [],
-        audits: mappedAudits,
-        auditTrail: mappedAudits,
-        auditHistory: mappedAudits,
-        sessions: sessionsRes.rows || [],
-        activity: sessionsRes.rows || []
+        audits: canSeeAudit ? mappedAudits : [],
+        auditTrail: canSeeAudit ? mappedAudits : [],
+        auditHistory: canSeeAudit ? mappedAudits : [],
+        sessions: canSeePII ? (sessionsRes.rows || []) : [],
+        activity: canSeePII ? (sessionsRes.rows || []) : [],
+        // Expose caller's effective permissions for UI guidance
+        _accessLevel: {
+          canSeePII,
+          canSeeFinancials,
+          canSeeAudit,
+          callerRole
+        }
       });
     } catch (err: any) {
       return ResponseHandler.error(res, err.message, 500);
@@ -583,49 +627,115 @@ export class AdminController {
 
   public static async adjustUserWallet(req: Request, res: Response) {
     const userId = req.params.id;
-    const { type, bucket, amountRupees, reason } = req.body;
-    const admin = (req as any).admin || { username: 'ADMIN', role: 'SUPER_ADMIN' };
+    const { type, bucket, amountRupees, reason, confirmed } = req.body;
+    const admin = (req as any).admin;
+    const ipAddress = req.ip || (req.headers?.['x-forwarded-for'] as string) || req.socket?.remoteAddress;
 
-    if (!type || !bucket || !amountRupees || !reason) {
+    if (!admin) {
+      return ResponseHandler.error(res, 'Admin authentication required', 401);
+    }
+
+    if (!userId) {
+      return ResponseHandler.error(res, 'Target user ID is required', 400);
+    }
+
+    if (!type || !bucket || amountRupees === undefined || amountRupees === null) {
       return ResponseHandler.error(res, 'type (CREDIT/DEBIT), bucket (deposit/winnings/bonus), amountRupees, and reason are required', 400);
     }
 
-    const amountPaise = Math.round(parseFloat(amountRupees) * 100);
-    if (isNaN(amountPaise) || amountPaise <= 0) {
-      return ResponseHandler.error(res, 'Invalid adjustment amount', 400);
+    if (type !== 'CREDIT' && type !== 'DEBIT') {
+      return ResponseHandler.error(res, 'Invalid adjustment type: must be CREDIT or DEBIT', 400);
     }
 
-    const refId = `ADJUST-${Date.now()}`;
-    const idempKey = `idemp_adjust_${userId}_${Date.now()}`;
+    if (!['deposit', 'winnings', 'bonus'].includes(bucket)) {
+      return ResponseHandler.error(res, 'Invalid bucket: must be deposit, winnings, or bonus', 400);
+    }
+
+    // Reason validation: minimum 5 characters, trimmed, max 500
+    if (typeof reason !== 'string' || reason.trim().length < 5) {
+      return ResponseHandler.error(res, 'A mandatory reason (minimum 5 characters) explaining this wallet adjustment is required for audit compliance', 400);
+    }
+
+    const trimmedReason = reason.trim();
+    if (trimmedReason.length > 500) {
+      return ResponseHandler.error(res, 'Reason is too long (maximum 500 characters)', 400);
+    }
+
+    const amountNum = parseFloat(amountRupees);
+    if (isNaN(amountNum) || amountNum <= 0) {
+      return ResponseHandler.error(res, 'Adjustment amount must be a positive number', 400);
+    }
+
+    // Hard amount limit: max ₹50,000 per single adjustment
+    const MAX_ADJUSTMENT_RUPEES = 50000;
+    if (amountNum > MAX_ADJUSTMENT_RUPEES) {
+      return ResponseHandler.error(
+        res,
+        `Adjustment amount exceeds maximum single-operation limit of ₹${MAX_ADJUSTMENT_RUPEES.toLocaleString('en-IN')}. Contact system administrator for higher adjustments.`,
+        400
+      );
+    }
+
+    // Explicit confirmation check: adjustments > ₹10,000 require confirmed === true
+    if (amountNum > 10000 && confirmed !== true) {
+      return ResponseHandler.error(
+        res,
+        `Adjustments greater than ₹10,000 require explicit confirmation. Set 'confirmed: true' in request payload.`,
+        400
+      );
+    }
+
+    const amountPaise = Math.round(amountNum * 100);
+
+    // Support Idempotency Key via header or body
+    const providedIdempKey = (req.headers?.['x-idempotency-key'] as string) || req.body?.idempotencyKey;
+    const idempKey = providedIdempKey || `idemp_adjust_${userId}_${Date.now()}`;
+    const refId = `ADJUST-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
     try {
+      // Capture previous balance before adjustment
+      const previousBalance = await WalletService.getBalance(userId);
+
       let updatedBalance;
       if (type === 'CREDIT') {
         if (bucket === 'winnings') {
-          updatedBalance = await WalletService.creditWinnings(userId, amountPaise, refId, `Admin Adjustment: ${reason}`, idempKey, { admin: admin.username, reason });
+          updatedBalance = await WalletService.creditWinnings(userId, amountPaise, refId, `Admin Adjustment: ${trimmedReason}`, idempKey, { admin: admin.username || admin.id, reason: trimmedReason });
         } else if (bucket === 'bonus') {
-          updatedBalance = await WalletService.creditBonus(userId, amountPaise, refId, `Admin Adjustment: ${reason}`, idempKey);
+          updatedBalance = await WalletService.creditBonus(userId, amountPaise, refId, `Admin Adjustment: ${trimmedReason}`, idempKey);
         } else {
-          updatedBalance = await WalletService.creditDeposit(userId, amountPaise, refId, `Admin Adjustment: ${reason}`, idempKey);
+          updatedBalance = await WalletService.creditDeposit(userId, amountPaise, refId, `Admin Adjustment: ${trimmedReason}`, idempKey);
         }
       } else {
         // DEBIT
-        const debitRes = await WalletService.debitBet(userId, amountPaise, refId, `Admin Debit: ${reason}`, idempKey, { admin: admin.username, reason });
+        const debitRes = await WalletService.debitBet(userId, amountPaise, refId, `Admin Debit: ${trimmedReason}`, idempKey, { admin: admin.username || admin.id, reason: trimmedReason });
         if (!debitRes.success) {
           return ResponseHandler.error(res, debitRes.message || 'Debit failed due to insufficient funds', 400);
         }
         updatedBalance = debitRes.newBalance;
       }
 
+      // Mandatory Audit Log
       await AuditService.log({
-        adminId: admin.username || 'ADMIN',
+        adminId: admin.username || admin.id || 'ADMIN',
         action: 'WALLET_ADJUSTED',
         target: `user:${userId}`,
         userId,
-        details: { type, bucket, amountRupees, amountPaise, reason, refId }
+        ipAddress: String(ipAddress || 'unknown'),
+        details: {
+          type,
+          bucket,
+          amountRupees: amountNum,
+          amountPaise,
+          reason: trimmedReason,
+          refId,
+          idempotencyKey: idempKey,
+          previousBalance,
+          updatedBalance,
+          adminRole: admin.role
+        }
       });
 
-      return ResponseHandler.success(res, { updatedBalance }, `Successfully adjusted wallet by ₹${(amountPaise / 100).toFixed(2)}`);
+      return ResponseHandler.success(res, { updatedBalance, previousBalance, idempotencyKey: idempKey }, `Successfully adjusted wallet by ₹${amountNum.toFixed(2)}`);
     } catch (err: any) {
       return ResponseHandler.error(res, err.message, 500);
     }
@@ -1287,12 +1397,26 @@ export class AdminController {
     const { username, password, role = 'VIEWER' } = req.body;
     const currentAdmin = (req as any).admin || { username: 'ADMIN' };
 
-    if (!username || !password || password.length < 6) {
-      return ResponseHandler.error(res, 'Username and password (min 6 chars) are required', 400);
+    if (!username || !password) {
+      return ResponseHandler.error(res, 'Username and password are required', 400);
+    }
+
+    // Enforce strong password policy
+    const passwordErrors: string[] = [];
+    if (password.length < 12) passwordErrors.push('at least 12 characters');
+    if (!/[A-Z]/.test(password)) passwordErrors.push('at least one uppercase letter');
+    if (!/[a-z]/.test(password)) passwordErrors.push('at least one lowercase letter');
+    if (!/[0-9]/.test(password)) passwordErrors.push('at least one digit');
+    if (!/[!@#$%^&*()_\-+=\[\]{};:'",.<>?/\\|`~]/.test(password)) passwordErrors.push('at least one special character');
+    if (passwordErrors.length > 0) {
+      return ResponseHandler.error(res,
+        `Password must contain: ${passwordErrors.join(', ')}.`,
+        400
+      );
     }
 
     const id = `adm_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    const passwordHash = crypto.createHash('sha256').update(password).digest('hex');
+    const passwordHash = await bcrypt.hash(password, 10);
 
     try {
       await pool.query(

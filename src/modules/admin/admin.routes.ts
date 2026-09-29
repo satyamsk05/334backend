@@ -10,6 +10,9 @@ export const adminRoutes = Router();
 // Apply admin authentication to all routes in this router
 adminRoutes.use(authenticateAdmin);
 
+// Session verification
+adminRoutes.get('/me', AdminController.getMe);
+
 // ==========================================
 // DASHBOARD & ANALYTICS
 // ==========================================

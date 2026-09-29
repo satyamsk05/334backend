@@ -34,18 +34,20 @@ export class WithdrawController {
     return ResponseHandler.success(res, result.record, result.message);
   }
 
-  public static approve(req: Request, res: Response) {
+  public static async approve(req: Request, res: Response) {
     const { withdrawalId } = req.body;
+    const idempKey = (req.headers?.['x-idempotency-key'] as string) || req.body?.idempotencyKey;
     if (!withdrawalId) return ResponseHandler.error(res, 'withdrawalId is required', 400);
-    const result = PaymentService.approveWithdrawal(withdrawalId);
+    const result = await PaymentService.approveWithdrawal(withdrawalId, idempKey);
     if (!result.success) return ResponseHandler.error(res, result.message, 400);
     return ResponseHandler.success(res, result.record, result.message);
   }
 
   public static async reject(req: Request, res: Response) {
     const { withdrawalId } = req.body;
+    const idempKey = (req.headers?.['x-idempotency-key'] as string) || req.body?.idempotencyKey;
     if (!withdrawalId) return ResponseHandler.error(res, 'withdrawalId is required', 400);
-    const result = await PaymentService.rejectWithdrawal(withdrawalId);
+    const result = await PaymentService.rejectWithdrawal(withdrawalId, idempKey);
     if (!result.success) return ResponseHandler.error(res, result.message, 400);
     return ResponseHandler.success(res, result.record, result.message);
   }

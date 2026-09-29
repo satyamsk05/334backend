@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { envConfig } from '../../config/env.config';
 import { User } from '../../database/models/User';
@@ -296,8 +297,6 @@ export class AuthService {
       throw new Error('Username and password are required');
     }
 
-    const sha256Pass = crypto.createHash('sha256').update(cleanPassword).digest('hex');
-
     // 1. Try PostgreSQL admins table
     try {
       const { DatabaseConfig } = await import('../../config/db.config');
@@ -312,7 +311,23 @@ export class AuthService {
           if (!adminRow.is_active) {
             throw new Error('Admin account is disabled');
           }
-          if (adminRow.password_hash === sha256Pass || adminRow.password_hash === cleanPassword) {
+
+          let isPasswordValid = false;
+          const storedHash = adminRow.password_hash || '';
+
+          if (storedHash.startsWith('$2a$') || storedHash.startsWith('$2b$')) {
+            isPasswordValid = await bcrypt.compare(cleanPassword, storedHash);
+          } else {
+            // Upgrade legacy SHA-256 hash to bcrypt; reject plaintext
+            const sha256Pass = crypto.createHash('sha256').update(cleanPassword).digest('hex');
+            if (storedHash.length === sha256Pass.length && crypto.timingSafeEqual(Buffer.from(storedHash), Buffer.from(sha256Pass))) {
+              isPasswordValid = true;
+              const upgradedBcrypt = await bcrypt.hash(cleanPassword, 10);
+              await pool.query('UPDATE admins SET password_hash = $1 WHERE id = $2', [upgradedBcrypt, adminRow.id]);
+            }
+          }
+
+          if (isPasswordValid) {
             await pool.query('UPDATE admins SET last_login_at = CURRENT_TIMESTAMP WHERE id = $1', [adminRow.id]);
             const token = jwt.sign(
               { id: adminRow.id, username: adminRow.username, role: adminRow.role || 'ADMIN' },
@@ -333,14 +348,25 @@ export class AuthService {
     const adminUser = envConfig.adminUsername;
     const adminPass = envConfig.adminPassword;
 
-    if (adminUser && adminPass && cleanUsername === adminUser && cleanPassword === adminPass) {
-      const token = jwt.sign(
-        { id: 'env-super-admin', username: adminUser, role: 'SUPER_ADMIN' },
-        envConfig.adminJwtSecret || envConfig.jwtSecret,
-        { expiresIn: '1d' }
-      );
-      Logger.info(`[AUTH] Admin login successful for master admin: ${adminUser}`);
-      return { token, username: adminUser, role: 'SUPER_ADMIN' };
+    if (adminUser && adminPass && cleanUsername === adminUser) {
+      let isEnvPassValid = false;
+      if (adminPass.startsWith('$2a$') || adminPass.startsWith('$2b$')) {
+        isEnvPassValid = await bcrypt.compare(cleanPassword, adminPass);
+      } else {
+        const passBuf = crypto.createHash('sha256').update(cleanPassword).digest();
+        const expectedBuf = crypto.createHash('sha256').update(adminPass).digest();
+        isEnvPassValid = crypto.timingSafeEqual(passBuf, expectedBuf);
+      }
+
+      if (isEnvPassValid) {
+        const token = jwt.sign(
+          { id: 'env-super-admin', username: adminUser, role: 'SUPER_ADMIN' },
+          envConfig.adminJwtSecret || envConfig.jwtSecret,
+          { expiresIn: '1d' }
+        );
+        Logger.info(`[AUTH] Admin login successful for master admin: ${adminUser}`);
+        return { token, username: adminUser, role: 'SUPER_ADMIN' };
+      }
     }
 
     throw new Error('Invalid Admin Username or Password');
@@ -378,9 +404,13 @@ export class AuthService {
   public static async verifyWhatsAppAuth(token: string, phoneInput?: string): Promise<{ verified: boolean; jwtToken?: string; user?: User }> {
     const auth = AuthService.pendingWaAuths.get(token);
     if (!auth) {
-      const phone = phoneInput || `91${Math.floor(7000000000 + Math.random() * 2999999999)}`;
-      const result = await AuthService.loginOrRegister(phone, `WhatsAppUser_${phone.slice(-4)}`);
-      return { verified: true, jwtToken: result.token, user: result.user };
+      throw new Error('INVALID_TOKEN: Unknown or invalid WhatsApp verification token');
+    }
+
+    const WA_AUTH_EXPIRY_MS = 10 * 60 * 1000;
+    if (Date.now() - auth.createdAt > WA_AUTH_EXPIRY_MS) {
+      AuthService.pendingWaAuths.delete(token);
+      throw new Error('EXPIRED_TOKEN: WhatsApp verification token has expired');
     }
 
     if (phoneInput) {
@@ -418,6 +448,44 @@ export class AuthService {
       }
       AuthService.persist();
     }
+
+    // Ensure PostgreSQL user record exists synchronously/idempotently so foreign keys referencing users(id) succeed
+    (async () => {
+      try {
+        const { DatabaseConfig } = await import('../../config/db.config');
+        const pool = DatabaseConfig.getPool();
+        if (pool) {
+          try {
+            await pool.query(
+              `INSERT INTO users (id, username, phone, created_at, updated_at)
+               VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+               ON CONFLICT (id) DO UPDATE
+               SET phone = COALESCE(EXCLUDED.phone, users.phone),
+                   username = CASE WHEN users.username LIKE 'Player_%' AND EXCLUDED.username NOT LIKE 'Player_%' THEN EXCLUDED.username ELSE users.username END,
+                   updated_at = CURRENT_TIMESTAMP`,
+              [user.id, user.name, user.phone || null]
+            );
+          } catch (phoneConflictErr: any) {
+            if (phoneConflictErr?.code === '23505' && phoneConflictErr?.constraint === 'users_phone_key') {
+              // Phone already owned by another user; persist with null phone so foreign keys referencing users(id) are satisfied
+              await pool.query(
+                `INSERT INTO users (id, username, phone, created_at, updated_at)
+                 VALUES ($1, $2, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                 ON CONFLICT (id) DO UPDATE
+                 SET username = CASE WHEN users.username LIKE 'Player_%' AND EXCLUDED.username NOT LIKE 'Player_%' THEN EXCLUDED.username ELSE users.username END,
+                     updated_at = CURRENT_TIMESTAMP`,
+                [user.id, user.name]
+              );
+            } else {
+              throw phoneConflictErr;
+            }
+          }
+        }
+      } catch (err: any) {
+        console.error('ensureUserExists PG error:', err.message);
+      }
+    })();
+
     return user;
   }
 

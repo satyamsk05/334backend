@@ -19,10 +19,26 @@ export class DepositController {
   }
 
   public static submitUtr(req: Request, res: Response) {
+    const authenticatedUserId = (req as any).user?.userId || (req as any).user?.id;
+    if (!authenticatedUserId) {
+      return ResponseHandler.error(res, 'Unauthorized: Valid user token required', 401);
+    }
+
     const { depositId, utr } = req.body;
     if (!depositId || !utr) {
       return ResponseHandler.error(res, 'depositId and utr are required', 400);
     }
+
+    const order = PaymentService.getDeposit(depositId);
+    if (!order) {
+      return ResponseHandler.error(res, 'Deposit order not found', 404);
+    }
+
+    // Ownership Verification: Only the creator of the deposit can submit its UTR
+    if (order.userId !== authenticatedUserId) {
+      return ResponseHandler.error(res, 'Forbidden: You do not own this deposit order', 403);
+    }
+
     const result = PaymentService.submitUtr(depositId, utr);
     if (!result.success) {
       return ResponseHandler.error(res, result.message, 400);
@@ -37,16 +53,18 @@ export class DepositController {
 
   public static async approve(req: Request, res: Response) {
     const { depositId } = req.body;
+    const idempKey = (req.headers?.['x-idempotency-key'] as string) || req.body?.idempotencyKey;
     if (!depositId) return ResponseHandler.error(res, 'depositId is required', 400);
-    const result = await PaymentService.approveDeposit(depositId);
+    const result = await PaymentService.approveDeposit(depositId, idempKey);
     if (!result.success) return ResponseHandler.error(res, result.message, 400);
     return ResponseHandler.success(res, result.record, result.message);
   }
 
-  public static reject(req: Request, res: Response) {
+  public static async reject(req: Request, res: Response) {
     const { depositId } = req.body;
+    const idempKey = (req.headers?.['x-idempotency-key'] as string) || req.body?.idempotencyKey;
     if (!depositId) return ResponseHandler.error(res, 'depositId is required', 400);
-    const result = PaymentService.rejectDeposit(depositId);
+    const result = await PaymentService.rejectDeposit(depositId, idempKey);
     if (!result.success) return ResponseHandler.error(res, result.message, 400);
     return ResponseHandler.success(res, result.record, result.message);
   }

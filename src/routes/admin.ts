@@ -69,7 +69,7 @@ adminRouter.post('/deposits/action', async (req: Request, res: Response) => {
     const result = await FinancialService.approveDeposit(depositId);
     return res.json(result);
   } else if (action === 'REJECT') {
-    const result = FinancialService.rejectDeposit(depositId);
+    const result = await FinancialService.rejectDeposit(depositId);
     return res.json(result);
   }
 
@@ -89,7 +89,7 @@ adminRouter.post('/withdrawals/action', async (req: Request, res: Response) => {
   }
 
   if (action === 'APPROVE') {
-    const result = FinancialService.approveWithdrawal(withdrawalId);
+    const result = await FinancialService.approveWithdrawal(withdrawalId);
     return res.json(result);
   } else if (action === 'REJECT') {
     const result = await FinancialService.rejectWithdrawal(withdrawalId);

@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { WalletService, WalletBalanceState } from '../modules/wallet/wallet.service';
 import { Transaction } from '../database/models/Transaction';
 
@@ -23,7 +24,7 @@ export class WalletLedger {
    * Request withdrawal debited from winnings balance in PostgreSQL.
    */
   public static async requestWithdrawal(userId: string, amountPaise: number, upiId: string): Promise<{ success: boolean; message: string; newBalance?: WalletBalance }> {
-    const withdrawalId = `WD-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+    const withdrawalId = `WD-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
     return await WalletService.debitWithdrawal(userId, amountPaise, withdrawalId, upiId);
   }
 

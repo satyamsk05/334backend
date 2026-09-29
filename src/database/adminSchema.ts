@@ -6,6 +6,18 @@ export class AdminSchema {
     if (!pool) return;
 
     const query = `
+      -- 0. Admins table
+      CREATE TABLE IF NOT EXISTS admins (
+        id VARCHAR(64) PRIMARY KEY,
+        username VARCHAR(128) UNIQUE NOT NULL,
+        password_hash VARCHAR(256) NOT NULL,
+        role VARCHAR(64) NOT NULL DEFAULT 'ADMIN',
+        is_active BOOLEAN DEFAULT TRUE,
+        last_login_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+
       -- 1. Admin Notes table
       CREATE TABLE IF NOT EXISTS admin_notes (
         id VARCHAR(64) PRIMARY KEY,
@@ -109,6 +121,47 @@ export class AdminSchema {
         ('app_versions', '{"minVersion": "1.0.0", "latestVersion": "1.0.4", "forceUpdate": false}'::jsonb, 'Client app version control', 'SYSTEM', CURRENT_TIMESTAMP),
         ('operational_flags', '{"depositsEnabled": true, "withdrawalsEnabled": true, "betsEnabled": true}'::jsonb, 'Operational circuit breakers', 'SYSTEM', CURRENT_TIMESTAMP)
       ON CONFLICT (key) DO NOTHING;
+
+      -- 7. Ensure deposits table and all required columns exist
+      CREATE TABLE IF NOT EXISTS deposits (
+        id VARCHAR(64) PRIMARY KEY,
+        deposit_id VARCHAR(64),
+        user_id VARCHAR(64) NOT NULL,
+        amount BIGINT NOT NULL,
+        currency VARCHAR(8) DEFAULT 'INR',
+        status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+        payment_method VARCHAR(32) DEFAULT 'UPI',
+        utr VARCHAR(128),
+        confirmed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+      ALTER TABLE deposits ADD COLUMN IF NOT EXISTS deposit_id VARCHAR(64);
+      ALTER TABLE deposits ADD COLUMN IF NOT EXISTS currency VARCHAR(8) DEFAULT 'INR';
+      ALTER TABLE deposits ADD COLUMN IF NOT EXISTS payment_method VARCHAR(32) DEFAULT 'UPI';
+      ALTER TABLE deposits ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMPTZ;
+      CREATE INDEX IF NOT EXISTS idx_deposits_user ON deposits(user_id, created_at DESC);
+
+      -- 8. Ensure withdrawals table and all required columns exist
+      CREATE TABLE IF NOT EXISTS withdrawals (
+        id VARCHAR(64) PRIMARY KEY,
+        withdrawal_id VARCHAR(64),
+        user_id VARCHAR(64) NOT NULL,
+        amount BIGINT NOT NULL,
+        currency VARCHAR(8) DEFAULT 'INR',
+        status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+        payout_method VARCHAR(32) DEFAULT 'UPI',
+        payout_address_or_upi VARCHAR(128),
+        upi_id VARCHAR(128),
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+      ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS withdrawal_id VARCHAR(64);
+      ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS currency VARCHAR(8) DEFAULT 'INR';
+      ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS payout_method VARCHAR(32) DEFAULT 'UPI';
+      ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS payout_address_or_upi VARCHAR(128);
+      ALTER TABLE withdrawals ADD COLUMN IF NOT EXISTS upi_id VARCHAR(128);
+      CREATE INDEX IF NOT EXISTS idx_withdrawals_user ON withdrawals(user_id, created_at DESC);
     `;
 
     try {

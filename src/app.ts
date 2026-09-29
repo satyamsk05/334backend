@@ -13,7 +13,7 @@ import { depositPageRouter } from './routes/depositPage';
 import { errorHandler } from './utils/errorHandler';
 import { ResponseHandler } from './utils/responseHandler';
 import { DatabaseConfig } from './config/db.config';
-import { createRateLimiter } from './middleware/rateLimit';
+import { createRateLimiter, adminLoginRateLimit } from './middleware/rateLimit';
 import xoGameRouter from './routes/xoGame';
 
 const corsOriginEnv = process.env.CORS_ORIGIN || process.env.ALLOWED_ORIGINS;
@@ -23,6 +23,42 @@ const allowedOrigins = corsOriginEnv && corsOriginEnv !== '*'
 
 const globalRateLimit = createRateLimiter(60_000, 120);
 const authRateLimit = createRateLimiter(60_000, 20);
+
+export function isAllowedCorsOrigin(origin: string | undefined): boolean {
+  // Allow native mobile apps, postman/curl, server-to-server without origin header
+  if (!origin) return true;
+
+  try {
+    const url = new URL(origin);
+    const host = url.hostname;
+
+    // Allow localhost and local loopback during development
+    if (process.env.NODE_ENV !== 'production' && (host === 'localhost' || host === '127.0.0.1')) {
+      return true;
+    }
+
+    // Allow configured server public host (deposit page, game page)
+    const publicHost = process.env.PUBLIC_HOST;
+    if (publicHost && host === publicHost) {
+      return true;
+    }
+
+    // Allow exact verified Admin panel origin only (NO arbitrary *.vercel.app wildcard)
+    if (origin === 'https://adminpenal-six.vercel.app') {
+      return true;
+    }
+
+    // Allow explicitly configured origins
+    if (allowedOrigins.includes(origin) || allowedOrigins.includes(url.origin)) {
+      return true;
+    }
+
+    // Disallow all other origins
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 export function createApp() {
   const app = express();
@@ -36,57 +72,36 @@ export function createApp() {
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     res.setHeader('X-DNS-Prefetch-Control', 'off');
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' wss: ws: https:;");
+
+    // Build connect-src from env rather than wildcards
+    const publicHost = process.env.PUBLIC_HOST;
+    const backendWsOrigin = publicHost
+      ? `wss://${publicHost} ws://${publicHost}`
+      : (process.env.NODE_ENV !== 'production' ? 'ws://localhost:4001 wss://localhost:4001' : '');
+    const connectSrc = [`'self'`, backendWsOrigin].filter(Boolean).join(' ');
+
+    // NOTE: script-src retains 'unsafe-inline' because the game page (/game) and deposit page
+    // (/deposit) serve inline <script> blocks from gamePage.ts and depositPage.ts.
+    // These are server-rendered HTML pages, not the admin panel.
+    // The admin panel enforces no unsafe-inline separately via next.config.js CSP headers.
+    res.setHeader('Content-Security-Policy',
+      `default-src 'self'; ` +
+      `script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; ` +
+      `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; ` +
+      `font-src 'self' https://fonts.gstatic.com; ` +
+      `img-src 'self' data:; ` +
+      `connect-src ${connectSrc};`
+    );
     next();
   });
 
   app.use(cors({
     origin: (origin, callback) => {
-      // Allow native mobile apps, postman/curl, same-origin without origin header
-      if (!origin) return callback(null, true);
-
-      // If CORS_ORIGIN is set to '*' or non-production, allow all
-      if (corsOriginEnv === '*' || process.env.NODE_ENV !== 'production') {
-        return callback(null, true);
-      }
-
-      try {
-        const url = new URL(origin);
-        const host = url.hostname;
-
-        // Allow localhost and local loopback on any port
-        if (host === 'localhost' || host === '127.0.0.1') {
-          return callback(null, true);
-        }
-
-        // Allow configured server public host (deposit page, game page)
-        const publicHost = process.env.PUBLIC_HOST;
-        if (publicHost && host === publicHost) {
-          return callback(null, true);
-        }
-
-        // Allow Admin panel on Vercel (production & preview deployments)
-        if (
-          origin === 'https://adminpenal-six.vercel.app' ||
-          host.endsWith('.vercel.app')
-        ) {
-          return callback(null, true);
-        }
-
-        // Allow explicitly configured origins
-        if (allowedOrigins.includes(origin) || allowedOrigins.includes(url.origin)) {
-          return callback(null, true);
-        }
-
-        // Gracefully disallow unknown external origin without throwing a 500 error
-        return callback(null, false);
-      } catch {
-        return callback(null, false);
-      }
+      return callback(null, isAllowedCorsOrigin(origin));
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-secret']
+    allowedHeaders: ['Content-Type', 'Authorization']
   }));
   app.use(express.json({ limit: '100kb' }));
   app.use(express.urlencoded({ extended: true, limit: '100kb' }));
@@ -95,15 +110,18 @@ export function createApp() {
   app.use(express.static(path.join(__dirname, '../public')));
 
   app.get('/api/v1/health', async (_req, res) => {
+    // Minimal public health check — reveals ONLY up/down status.
+    // Internal service name, database backend, and infra details are intentionally omitted
+    // to avoid fingerprinting and reconnaissance by attackers.
     const databaseHealthy = await DatabaseConfig.checkHealth();
     res.status(databaseHealthy ? 200 : 503).json({
-      status: databaseHealthy ? 'ONLINE' : 'DEGRADED',
-      service: '334game-backend-core',
-      database: databaseHealthy ? 'ONLINE' : 'OFFLINE',
+      status: databaseHealthy ? 'ok' : 'degraded',
       timestamp: new Date().toISOString()
     });
   });
 
+  // Admin login has a tighter brute-force limiter (5 req / 15 min) applied before the general authRateLimit
+  app.post('/api/v1/auth/admin/login', adminLoginRateLimit);
   app.use('/api/v1/auth', authRateLimit, authRoutes);
   app.use('/api/v1/wallet', walletRoutes);
   app.use('/api/v1/payments', paymentRoutes);

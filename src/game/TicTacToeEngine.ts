@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { WalletService } from '../modules/wallet/wallet.service';
 import { Logger } from '../utils/logger';
+import { RedisManager } from '../db/redis';
 
 export interface XOTier {
   id: string;
@@ -107,7 +108,61 @@ export class TicTacToeEngine {
     this.roomChangeCallbacks.push(cb);
   }
 
+  private static async syncRoomToRedis(room: XORoom): Promise<void> {
+    try {
+      const serializableRoom = {
+        roomId: room.roomId,
+        tierId: room.tierId,
+        tier: room.tier,
+        player1: room.player1,
+        player2: room.player2,
+        board: room.board,
+        currentTurnUserId: room.currentTurnUserId,
+        status: room.status,
+        turnSecondsRemaining: room.turnSecondsRemaining,
+        totalGameSecondsRemaining: room.totalGameSecondsRemaining,
+        winnerUserId: room.winnerUserId,
+        isDraw: room.isDraw,
+        winningIndices: room.winningIndices,
+        createdAt: room.createdAt
+      };
+
+      const ttl = room.status === 'COMPLETED' || room.status === 'CANCELLED' ? 300 : 3600;
+      await RedisManager.set(`xo:room:${room.roomId}`, JSON.stringify(serializableRoom), ttl);
+
+      if (room.status === 'IN_GAME') {
+        if (room.player1?.userId) {
+          await RedisManager.set(`xo:user_room:${room.player1.userId}`, room.roomId, 3600);
+        }
+        if (room.player2?.userId && !room.player2.isBot) {
+          await RedisManager.set(`xo:user_room:${room.player2.userId}`, room.roomId, 3600);
+        }
+      } else {
+        if (room.player1?.userId) {
+          await RedisManager.del(`xo:user_room:${room.player1.userId}`);
+        }
+        if (room.player2?.userId && !room.player2.isBot) {
+          await RedisManager.del(`xo:user_room:${room.player2.userId}`);
+        }
+      }
+    } catch (err: any) {
+      Logger.warn(`[XO] Redis sync room warning: ${err.message}`);
+    }
+  }
+
+  private static async syncQueueToRedis(tierId: string, queue: any[]): Promise<void> {
+    try {
+      await RedisManager.set(`xo:queue:${tierId}`, JSON.stringify(queue), 300);
+    } catch (err: any) {
+      Logger.warn(`[XO] Redis queue sync warning: ${err.message}`);
+    }
+  }
+
   private static notifyRoom(room: XORoom) {
+    this.syncRoomToRedis(room).catch((err) => {
+      Logger.warn(`[XO] Background Redis room sync failed: ${err.message}`);
+    });
+
     this.roomChangeCallbacks.forEach((cb) => {
       try {
         cb(room);
@@ -125,11 +180,43 @@ export class TicTacToeEngine {
     return this.activeRooms.get(roomId);
   }
 
+  public static async getRoomAsync(roomId: string): Promise<XORoom | undefined> {
+    const memoryRoom = this.activeRooms.get(roomId);
+    if (memoryRoom) return memoryRoom;
+
+    try {
+      const raw = await RedisManager.get(`xo:room:${roomId}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        this.activeRooms.set(roomId, parsed);
+        return parsed;
+      }
+    } catch {
+      // Fallback
+    }
+    return undefined;
+  }
+
   public static getRoomForUser(userId: string): XORoom | undefined {
     for (const room of this.activeRooms.values()) {
       if ((room.player1.userId === userId || room.player2?.userId === userId) && room.status !== 'COMPLETED' && room.status !== 'CANCELLED') {
         return room;
       }
+    }
+    return undefined;
+  }
+
+  public static async getRoomForUserAsync(userId: string): Promise<XORoom | undefined> {
+    const memRoom = this.getRoomForUser(userId);
+    if (memRoom) return memRoom;
+
+    try {
+      const roomId = await RedisManager.get(`xo:user_room:${userId}`);
+      if (roomId) {
+        return await this.getRoomAsync(roomId);
+      }
+    } catch {
+      // Fallback
     }
     return undefined;
   }
@@ -183,6 +270,7 @@ export class TicTacToeEngine {
     // If queue has an opponent waiting
     if (queue.length > 0) {
       const opponent = queue.shift()!;
+      this.syncQueueToRedis(tierId, queue);
       const roomId = `XO-${Date.now()}-${crypto.randomInt(100, 999)}`;
 
       const room: XORoom = {
@@ -224,6 +312,7 @@ export class TicTacToeEngine {
     // Add user to queue
     queue.push({ userId, name, avatarUrl, joinedAt: Date.now() });
     this.matchmakingQueues.set(tierId, queue);
+    this.syncQueueToRedis(tierId, queue);
 
     // Auto Bot Fallback after 4.5 seconds if no human opponent joins
     setTimeout(async () => {
@@ -231,10 +320,9 @@ export class TicTacToeEngine {
       const userInQueue = currentQueue.find((u) => u.userId === userId);
       if (userInQueue) {
         // Remove from queue and spawn AI match
-        this.matchmakingQueues.set(
-          tierId,
-          currentQueue.filter((u) => u.userId !== userId)
-        );
+        const updatedQueue = currentQueue.filter((u) => u.userId !== userId);
+        this.matchmakingQueues.set(tierId, updatedQueue);
+        this.syncQueueToRedis(tierId, updatedQueue);
 
         const botNames = ['Anika Donin', 'Vikram S.', 'Rahul_Gamer', 'Pooja Sharma', 'Kunal99'];
         const randomBotName = botNames[crypto.randomInt(0, botNames.length)];
@@ -502,63 +590,48 @@ export class TicTacToeEngine {
   }
 
   /**
-   * Authoritative Settlement for Client-reported game completion (Win / Draw / Loss)
+   * Authoritative Settlement: Server calculates winner/draw from room state.
+   * Client-reported result is NEVER trusted for financial payouts.
    */
   public static async settleGameResult(
     userId: string,
     roomId: string,
-    tierId: string,
-    result: 'WIN' | 'DRAW' | 'LOSS'
-  ): Promise<{ success: boolean; message?: string; prizePaise?: number }> {
-    const tier = XO_STAKE_TIERS.find((t) => t.id === tierId) || XO_STAKE_TIERS[0];
-
+    _tierId?: string,
+    _clientReportedResult?: string
+  ): Promise<{ success: boolean; message?: string; prizePaise?: number; winnerUserId?: string | null; isDraw?: boolean }> {
     const room = this.activeRooms.get(roomId);
-    if (room) {
-      room.status = 'COMPLETED';
-      if (room.turnTimerHandle) {
-        clearInterval(room.turnTimerHandle);
-        room.turnTimerHandle = null;
+    if (!room) {
+      return { success: false, message: 'Game room not found or already settled' };
+    }
+
+    // Verify requesting user is actually a participant in this room
+    if (room.player1.userId !== userId && room.player2?.userId !== userId) {
+      return { success: false, message: 'Unauthorized: User is not a participant in this room' };
+    }
+
+    // If game is still IN_GAME, evaluate authoritative server board state
+    if (room.status === 'IN_GAME') {
+      const winResult = this.checkWin(room.board);
+      if (winResult) {
+        room.winningIndices = winResult.indices;
+        const winner = winResult.winner === room.player1.symbol ? room.player1.userId : (room.player2?.userId || null);
+        await this.endGame(room, winner, false);
+      } else if (room.board.every((cell) => cell !== null)) {
+        await this.endGame(room, null, true);
+      } else {
+        // Game is still actively in progress - client cannot unilaterally end it
+        return { success: false, message: 'Game is still in progress' };
       }
     }
 
-    if (result === 'WIN') {
-      const winRef = `XO-WIN-${Date.now()}-${crypto.randomInt(1000, 9999)}`;
-      const idempKey = `idemp_${roomId}_WIN_${userId}`;
-      try {
-        await WalletService.creditWinnings(
-          userId,
-          tier.firstPrizePaise,
-          winRef,
-          `Won 1v1 ${tier.name}`,
-          idempKey,
-          { roomId, tierId }
-        );
-        return { success: true, prizePaise: tier.firstPrizePaise };
-      } catch (err: any) {
-        Logger.error('[XO] Failed to credit win:', err);
-        return { success: false, message: err.message || 'Failed to credit winnings' };
-      }
-    } else if (result === 'DRAW') {
-      const ref = `XO-REFUND-${Date.now()}-${crypto.randomInt(1000, 9999)}`;
-      const idempKey = `idemp_${roomId}_DRAW_${userId}`;
-      try {
-        await WalletService.refundEquity(
-          userId,
-          tier.entryPaise,
-          0,
-          0,
-          ref,
-          `Draw Refund for ${tier.name}`,
-          idempKey
-        );
-        return { success: true, prizePaise: tier.entryPaise };
-      } catch (err: any) {
-        Logger.error('[XO] Failed to refund draw:', err);
-        return { success: false, message: err.message || 'Failed to refund draw' };
-      }
-    }
-
-    return { success: true };
+    // Room is COMPLETED. Return authoritative outcome without re-crediting wallet.
+    const isWinner = room.winnerUserId === userId;
+    return {
+      success: true,
+      winnerUserId: room.winnerUserId,
+      isDraw: room.isDraw,
+      prizePaise: isWinner ? room.tier.firstPrizePaise : (room.isDraw ? room.tier.entryPaise : 0)
+    };
   }
 
   public static getActiveRoomsCount(): number {

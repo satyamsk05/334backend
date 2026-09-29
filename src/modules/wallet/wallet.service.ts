@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Pool, PoolClient } from 'pg';
 import { DatabaseConfig } from '../../config/db.config';
 import { Transaction } from '../../database/models/Transaction';
@@ -41,6 +42,14 @@ export class WalletService {
       throw new Error('[WALLET] Database connection pool is not available.');
     }
     return pool;
+  }
+
+  private static generateLedgerId(): string {
+    return `ledg_${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
+  }
+
+  private static generateDefaultIdempKey(prefix: string): string {
+    return `${prefix}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
   }
 
   /**
@@ -134,7 +143,7 @@ export class WalletService {
       throw new Error('Deposit amount must be positive');
     }
 
-    const idempKey = idempotencyKey || referenceId || `DEP-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    const idempKey = idempotencyKey || referenceId || WalletService.generateDefaultIdempKey('DEP');
     const pool = WalletService.getPool();
     const client = await pool.connect();
 
@@ -180,7 +189,7 @@ export class WalletService {
       );
 
       // 4. Create immutable ledger entry
-      const ledgerId = `ledg_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+      const ledgerId = WalletService.generateLedgerId();
       await client.query(
         `INSERT INTO wallet_ledger (
            id, user_id, wallet_id, type, amount, direction, reference_type,
@@ -239,7 +248,7 @@ export class WalletService {
       throw new Error('Winning amount must be positive');
     }
 
-    const idempKey = idempotencyKey || referenceId || `WIN-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    const idempKey = idempotencyKey || referenceId || WalletService.generateDefaultIdempKey('WIN');
     const pool = WalletService.getPool();
     const client = await pool.connect();
 
@@ -281,7 +290,7 @@ export class WalletService {
         [newWinning, balanceAfter, userId]
       );
 
-      const ledgerId = `ledg_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+      const ledgerId = WalletService.generateLedgerId();
       await client.query(
         `INSERT INTO wallet_ledger (
            id, user_id, wallet_id, type, amount, direction, reference_type,
@@ -339,7 +348,7 @@ export class WalletService {
       throw new Error('Bonus amount must be positive');
     }
 
-    const idempKey = idempotencyKey || referenceId || `BON-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    const idempKey = idempotencyKey || referenceId || WalletService.generateDefaultIdempKey('BON');
     const pool = WalletService.getPool();
     const client = await pool.connect();
 
@@ -380,7 +389,7 @@ export class WalletService {
         [newBonus, balanceAfter, userId]
       );
 
-      const ledgerId = `ledg_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+      const ledgerId = WalletService.generateLedgerId();
       await client.query(
         `INSERT INTO wallet_ledger (
            id, user_id, wallet_id, type, amount, direction, reference_type,
@@ -437,7 +446,7 @@ export class WalletService {
       return { success: false, message: 'Invalid bet amount' };
     }
 
-    const idempKey = idempotencyKey || referenceId || `BET-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    const idempKey = idempotencyKey || referenceId || WalletService.generateDefaultIdempKey('BET');
     const pool = WalletService.getPool();
     const client = await pool.connect();
 
@@ -514,7 +523,7 @@ export class WalletService {
         [dep, win, bon, balanceAfter, userId]
       );
 
-      const ledgerId = `ledg_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+      const ledgerId = WalletService.generateLedgerId();
       await client.query(
         `INSERT INTO wallet_ledger (
            id, user_id, wallet_id, type, amount, direction, reference_type,
@@ -629,7 +638,7 @@ export class WalletService {
         [newDeposit, newWinning, newBonus, balanceAfter, userId]
       );
 
-      const ledgerId = `ledg_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+      const ledgerId = WalletService.generateLedgerId();
       await client.query(
         `INSERT INTO wallet_ledger (
            id, user_id, wallet_id, type, amount, direction, reference_type,
@@ -745,7 +754,7 @@ export class WalletService {
         [newWinning, balanceAfter, userId]
       );
 
-      const ledgerId = `ledg_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+      const ledgerId = WalletService.generateLedgerId();
       await client.query(
         `INSERT INTO wallet_ledger (
            id, user_id, wallet_id, type, amount, direction, reference_type,
@@ -844,7 +853,7 @@ export class WalletService {
         [newWinning, balanceAfter, userId]
       );
 
-      const ledgerId = `ledg_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+      const ledgerId = WalletService.generateLedgerId();
       await client.query(
         `INSERT INTO wallet_ledger (
            id, user_id, wallet_id, type, amount, direction, reference_type,

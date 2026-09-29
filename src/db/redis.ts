@@ -1,9 +1,13 @@
+import EventEmitter from 'events';
 import Redis from 'ioredis';
 
 export class RedisManager {
   private static client: Redis | null = null;
+  private static subClient: Redis | null = null;
   private static isConnected = false;
   private static fallbackMap = new Map<string, string>();
+  private static localEmitter = new EventEmitter();
+  private static subscribedChannels = new Set<string>();
 
   public static init(): void {
     const redisUrl = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
@@ -19,9 +23,23 @@ export class RedisManager {
         }
       });
 
+      RedisManager.subClient = new Redis(redisUrl, {
+        maxRetriesPerRequest: 1,
+        retryStrategy(times) {
+          if (times > 3) {
+            return null;
+          }
+          return Math.min(times * 200, 1000);
+        }
+      });
+
       RedisManager.client.on('connect', () => {
         RedisManager.isConnected = true;
         console.log('⚡ Redis Connected Successfully (Local/EC2 Redis instance)');
+      });
+
+      RedisManager.subClient.on('message', (channel, message) => {
+        RedisManager.localEmitter.emit(channel, message);
       });
 
       RedisManager.client.on('error', (err) => {
@@ -29,6 +47,10 @@ export class RedisManager {
           console.warn('⚠️ Redis Connection Error:', err.message);
         }
         RedisManager.isConnected = false;
+      });
+
+      RedisManager.subClient.on('error', () => {
+        // Silently handled by local emitter fallback
       });
     } catch (err) {
       console.warn('⚠️ Redis Init Warning (Using In-Memory Fallback):', err);
@@ -83,5 +105,30 @@ export class RedisManager {
       }
     }
     RedisManager.fallbackMap.delete(key);
+  }
+
+  public static async publish(channel: string, message: string): Promise<void> {
+    if (RedisManager.isReady()) {
+      try {
+        await RedisManager.client!.publish(channel, message);
+        return;
+      } catch (e) {
+        // Fallback to local emitter
+      }
+    }
+    RedisManager.localEmitter.emit(channel, message);
+  }
+
+  public static subscribe(channel: string, listener: (message: string) => void): void {
+    RedisManager.localEmitter.on(channel, listener);
+
+    if (RedisManager.subClient && !RedisManager.subscribedChannels.has(channel)) {
+      RedisManager.subscribedChannels.add(channel);
+      RedisManager.subClient.subscribe(channel).catch(() => {});
+    }
+  }
+
+  public static unsubscribe(channel: string, listener: (message: string) => void): void {
+    RedisManager.localEmitter.off(channel, listener);
   }
 }

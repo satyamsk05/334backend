@@ -34,23 +34,15 @@ export class UserController {
     return ResponseHandler.success(res, updated, `User ${isBanned ? 'banned' : 'unbanned'} successfully`);
   }
 
-  public static async adjustWallet(req: Request, res: Response) {
-    const { userId, type, amountRupees } = req.body;
-    if (!userId || !type || !amountRupees) {
-      return ResponseHandler.error(res, 'userId, type, and amountRupees are required', 400);
-    }
-    try {
-      const result = await UserService.adjustWallet(userId, type, amountRupees);
-      return ResponseHandler.success(res, result, 'Wallet adjusted successfully');
-    } catch (err: any) {
-      return ResponseHandler.error(res, err.message || 'Failed to adjust wallet', 500);
-    }
-  }
-
   public static async registerFcmToken(req: Request, res: Response) {
-    const { userId, fcmToken } = req.body;
-    if (!userId || !fcmToken) {
-      return ResponseHandler.error(res, 'userId and fcmToken are required', 400);
+    const userId = (req as any).user?.userId || (req as any).user?.id;
+    const { fcmToken } = req.body;
+
+    if (!userId) {
+      return ResponseHandler.error(res, 'Authentication required', 401);
+    }
+    if (!fcmToken) {
+      return ResponseHandler.error(res, 'fcmToken is required', 400);
     }
 
     const pool = (await import('../../config/db.config')).DatabaseConfig.getPool();

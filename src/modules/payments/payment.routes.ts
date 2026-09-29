@@ -7,7 +7,7 @@ export const paymentRoutes = Router();
 
 // User Actions (Require JWT Authentication)
 paymentRoutes.post('/deposit/initiate', authenticateJwt, DepositController.initiate);
-paymentRoutes.post('/deposit/utr', DepositController.submitUtr);
+paymentRoutes.post('/deposit/utr', authenticateJwt, DepositController.submitUtr);
 paymentRoutes.post('/withdraw/request', authenticateJwt, WithdrawController.request);
 
 // Admin-Only Financial Operations

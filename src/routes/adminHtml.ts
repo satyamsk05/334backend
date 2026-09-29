@@ -47,9 +47,10 @@ export function getAdminDashboardHtml(): string {
 
     <div id="loginSection" class="login-box">
         <h2>👑 Admin Login</h2>
-        <p style="color: #A098B2; font-size: 13px; margin-bottom: 20px;">Enter Admin Secret Key to access dashboard</p>
-        <input type="password" id="secretInput" placeholder="Enter Admin Secret" autocomplete="current-password">
-        <button onclick="attemptLogin()">LOGIN TO DASHBOARD</button>
+        <p style="color: #A098B2; font-size: 13px; margin-bottom: 20px;">Enter Admin credentials to access dashboard</p>
+        <input type="text" id="usernameInput" placeholder="Admin Username" style="width: 100%; padding: 12px; margin-bottom: 12px; border-radius: 8px; border: 1px solid #3B2968; background: #120A24; color: #FFF; font-size: 14px; box-sizing: border-box;">
+        <input type="password" id="passwordInput" placeholder="Admin Password" autocomplete="current-password" style="width: 100%; padding: 12px; margin-bottom: 16px; border-radius: 8px; border: 1px solid #3B2968; background: #120A24; color: #FFF; font-size: 14px; box-sizing: border-box;">
+        <button onclick="attemptLogin()" style="width: 100%; padding: 12px; background: #8B5CF6; color: #FFF; font-weight: 700; border: none; border-radius: 8px; cursor: pointer;">LOGIN TO DASHBOARD</button>
         <p id="errorMsg" style="color: #FF4D4D; font-size: 13px; margin-top: 12px; display: none;"></p>
     </div>
 
@@ -62,6 +63,7 @@ export function getAdminDashboardHtml(): string {
             <div>
                 <span class="status-badge">● LIVE SERVER ONLINE</span>
                 <button class="btn-refresh" onclick="fetchDashboardData()" style="margin-left: 10px;">↻ Refresh</button>
+                <button class="btn-action btn-reject" onclick="logout()" style="margin-left: 10px; padding: 8px 16px;">Logout</button>
             </div>
         </div>
 
@@ -156,19 +158,47 @@ export function getAdminDashboardHtml(): string {
     </div>
 
     <script>
-        let adminSecret = localStorage.getItem('adminSecret') || '';
+        let adminToken = localStorage.getItem('adminToken') || '';
 
-        function attemptLogin() {
-            const inputVal = document.getElementById('secretInput').value.trim();
-            if (!inputVal) return;
-            adminSecret = inputVal;
-            localStorage.setItem('adminSecret', adminSecret);
-            fetchDashboardData();
+        async function attemptLogin() {
+            const username = document.getElementById('usernameInput').value.trim();
+            const password = document.getElementById('passwordInput').value.trim();
+            if (!username || !password) return;
+
+            try {
+                const res = await fetch('/api/v1/auth/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (data.success && data.data?.token) {
+                    adminToken = data.data.token;
+                    localStorage.setItem('adminToken', adminToken);
+                    fetchDashboardData();
+                } else {
+                    document.getElementById('errorMsg').innerText = data.message || 'Invalid admin credentials';
+                    document.getElementById('errorMsg').style.display = 'block';
+                }
+            } catch (err) {
+                document.getElementById('errorMsg').innerText = 'Login error: ' + err.message;
+                document.getElementById('errorMsg').style.display = 'block';
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('adminToken');
+            adminToken = '';
+            location.reload();
         }
 
         async function fetchDashboardData() {
+            if (!adminToken) return;
             try {
-                const headers = { 'x-admin-secret': adminSecret };
+                const headers = { 
+                    'Authorization': 'Bearer ' + adminToken,
+                    'Content-Type': 'application/json'
+                };
 
                 // Fetch Analytics
                 const res = await fetch('/api/v1/admin/analytics', { headers });
@@ -180,7 +210,11 @@ export function getAdminDashboardHtml(): string {
                     document.getElementById('activePlayers').innerText = (data.data.totalActivePlayers || 0) + ' Live 🟢';
                     document.getElementById('houseProfit').innerText = '₹' + ((data.data.netHouseProfitRupees || 0)).toFixed(2);
                 } else {
-                    document.getElementById('errorMsg').innerText = 'Invalid Admin Secret Key!';
+                    localStorage.removeItem('adminToken');
+                    adminToken = '';
+                    document.getElementById('loginSection').style.display = 'block';
+                    document.getElementById('dashboardSection').style.display = 'none';
+                    document.getElementById('errorMsg').innerText = 'Session expired. Please login again.';
                     document.getElementById('errorMsg').style.display = 'block';
                     return;
                 }
@@ -289,7 +323,7 @@ export function getAdminDashboardHtml(): string {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
-                        'x-admin-secret': adminSecret
+                        'Authorization': 'Bearer ' + adminToken
                     },
                     body: JSON.stringify({ depositId, action })
                 });
@@ -308,7 +342,7 @@ export function getAdminDashboardHtml(): string {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
-                        'x-admin-secret': adminSecret
+                        'Authorization': 'Bearer ' + adminToken
                     },
                     body: JSON.stringify({ withdrawalId, action })
                 });
@@ -320,8 +354,8 @@ export function getAdminDashboardHtml(): string {
             }
         }
 
-        // Auto load if secret exists
-        if (adminSecret) {
+        // Auto load if token exists
+        if (adminToken) {
             fetchDashboardData();
         }
 

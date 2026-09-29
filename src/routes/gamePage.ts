@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { RingOfFutureEngine, MultiplierType } from '../game/RingOfFutureEngine';
 import { WalletLedger } from '../services/WalletLedger';
 import { envConfig } from '../config/env.config';
-import { optionalAuthenticateJwt } from '../modules/auth/auth.middleware';
+import { authenticateJwt, optionalAuthenticateJwt } from '../modules/auth/auth.middleware';
 
 export const gamePageRouter = Router();
 
@@ -25,7 +25,7 @@ function resolveUserIdFromRequest(req: Request): string {
     }
   }
 
-  return (req.query.userId as string) || (req.body?.userId as string) || '';
+  return '';
 }
 
 gamePageRouter.get('/api/v1/ring-of-future/state', optionalAuthenticateJwt, async (req: Request, res: Response) => {
@@ -35,12 +35,20 @@ gamePageRouter.get('/api/v1/ring-of-future/state', optionalAuthenticateJwt, asyn
   res.json({ success: true, data: { gameState: state, wallet } });
 });
 
-gamePageRouter.post('/api/v1/ring-of-future/bet', optionalAuthenticateJwt, async (req: Request, res: Response) => {
-  const userId = resolveUserIdFromRequest(req);
-  const { multiplierType, amountRupees } = req.body;
-  if (!userId || typeof userId !== 'string' || !userId.trim()) {
-    return res.status(401).json({ success: false, message: 'Authentication or valid userId is required to place bets' });
+gamePageRouter.post('/api/v1/ring-of-future/bet', authenticateJwt, async (req: Request, res: Response) => {
+  const authenticatedUserId = (req as any).user?.userId || (req as any).user?.id;
+  if (!authenticatedUserId || typeof authenticatedUserId !== 'string' || !authenticatedUserId.trim()) {
+    return res.status(401).json({ success: false, message: 'Authentication required to place bets' });
   }
+
+  // If request body explicitly specifies a userId, it must match the verified token principal
+  const requestedUserId = req.body?.userId;
+  if (requestedUserId && requestedUserId !== authenticatedUserId) {
+    return res.status(403).json({ success: false, message: 'Forbidden: You cannot place bets on behalf of another user' });
+  }
+
+  const userId = authenticatedUserId;
+  const { multiplierType, amountRupees } = req.body;
   const num = parseFloat(amountRupees);
   if (isNaN(num) || num <= 0) {
     return res.status(400).json({ success: false, message: 'Invalid bet amount' });
@@ -406,5 +414,8 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
 </html>
   `;
 
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.send(html);
 });

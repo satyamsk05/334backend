@@ -42,11 +42,23 @@ export class AuthController {
       return ResponseHandler.success(res, { exists: false, isBanned: false }, 'User status checked');
     }
 
+    // Check if caller has verified ownership via JWT
+    const authUser = (req as any).user;
+    const isOwner = authUser && (authUser.userId === user.id || authUser.id === user.id);
+
+    if (isOwner) {
+      return ResponseHandler.success(res, {
+        exists: true,
+        userId: user.id,
+        phone: user.phone,
+        name: user.name,
+        isBanned: Boolean(user.isBanned)
+      }, 'User status retrieved');
+    }
+
+    // Public / unauthenticated callers receive minimal existence metadata without PII exposure
     return ResponseHandler.success(res, {
       exists: true,
-      userId: user.id,
-      phone: user.phone,
-      name: user.name,
       isBanned: Boolean(user.isBanned)
     }, 'User status retrieved');
   }
@@ -59,10 +71,25 @@ export class AuthController {
 
     try {
       const result = await AuthService.adminLogin(username, password);
+      
+      const isProduction = process.env.NODE_ENV === 'production';
+      res.cookie('adminToken', result.token, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? 'strict' : 'lax',
+        path: '/',
+        maxAge: 8 * 60 * 60 * 1000 // 8 hours
+      });
+
       return ResponseHandler.success(res, result, 'Admin login successful');
     } catch (err: any) {
       return ResponseHandler.error(res, err.message || 'Invalid credentials', 401);
     }
+  }
+
+  public static async adminLogout(req: Request, res: Response) {
+    res.clearCookie('adminToken', { path: '/' });
+    return ResponseHandler.success(res, { loggedOut: true }, 'Admin logged out successfully');
   }
 
   public static async initiateWhatsApp(req: Request, res: Response) {
@@ -83,12 +110,16 @@ export class AuthController {
       }
       return ResponseHandler.success(res, result, 'WhatsApp authentication verified successfully');
     } catch (err: any) {
-      return ResponseHandler.error(res, err.message || 'Verification failed', 400);
+      const status = err.message?.startsWith('INVALID_TOKEN') || err.message?.startsWith('EXPIRED_TOKEN') ? 401 : 400;
+      return ResponseHandler.error(res, err.message || 'Verification failed', status);
     }
   }
 
   public static async getProfile(req: Request, res: Response) {
-    const userId = (req as any).user?.userId || req.query.userId || 'DEFAULT_USER';
+    const userId = (req as any).user?.userId || (req as any).user?.id;
+    if (!userId) {
+      return ResponseHandler.error(res, 'Authentication required', 401);
+    }
     const user = AuthService.getUserById(userId as string);
     if (!user) {
       return ResponseHandler.error(res, 'User not found', 404);
@@ -97,9 +128,9 @@ export class AuthController {
   }
 
   public static async updateProfile(req: Request, res: Response) {
-    const userId = (req as any).user?.userId || req.body.userId;
+    const userId = (req as any).user?.userId || (req as any).user?.id;
     if (!userId) {
-      return ResponseHandler.error(res, 'User ID is required', 400);
+      return ResponseHandler.error(res, 'Authentication required', 401);
     }
     try {
       const { name, avatarUrl } = req.body;
