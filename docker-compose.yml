@@ -7,6 +7,10 @@ services:
     restart: always
     ports:
       - "4001:4000"
+    volumes:
+      - ./data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     env_file:
       - .env
     environment:
