@@ -131,7 +131,8 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
 
     /* Canvas Stage Area */
     .canvas-stage { width: 100%; position: relative; display: flex; justify-content: center; align-items: center; margin: 10px 0; }
-    canvas { display: block; max-width: 100%; }
+    canvas { display: block; max-width: 100%; will-change: transform; transform: translate3d(0, 0, 0); backface-visibility: hidden; }
+    .wheel-arrow { position: absolute; top: -2px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 9px solid transparent; border-right: 9px solid transparent; border-top: 15px solid #FFFFFF; z-index: 10; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6)); pointer-events: none; }
 
     /* Center Overlay Badge */
     .center-overlay { position: absolute; background: #3A3D3E; border: 2px solid #525658; border-radius: 12px; padding: 8px 18px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.4); pointer-events: none; }
@@ -174,7 +175,10 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
 
     <!-- Canvas Stage Area -->
     <div class="canvas-stage">
-      <canvas id="wheelCanvas" width="340" height="340"></canvas>
+      <div style="position: relative; width: 340px; height: 340px; display: flex; justify-content: center; align-items: center;">
+        <canvas id="wheelCanvas" width="340" height="340"></canvas>
+        <div class="wheel-arrow"></div>
+      </div>
       
       <!-- Center Status Pill -->
       <div class="center-overlay" id="centerOverlay">
@@ -225,7 +229,7 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
     let selectedChipRupees = 10;
     let currentPhase = "${initialState.phase}";
     let targetSegmentIndex = ${initialState.winningSegmentIndex};
-    let currentRotation = 0;
+    let currentRotationDeg = 0;
     let isSpinningAnimation = false;
 
     // 32 Segment Colors
@@ -243,14 +247,14 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
     const outerRadius = 155;
     const innerRadius = 85;
 
-    function drawWheel(rotationAngle) {
+    // Render 32 Segments ONCE to GPU texture
+    function initWheelTexture() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const totalSegments = 32;
       const anglePerSegment = (2 * Math.PI) / totalSegments;
 
       ctx.save();
       ctx.translate(centerX, centerY);
-      ctx.rotate(rotationAngle);
 
       for (let i = 0; i < totalSegments; i++) {
         const startAngle = i * anglePerSegment;
@@ -270,18 +274,9 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
       }
 
       ctx.restore();
-
-      // Draw Top Indicator Arrow (Pointing Down at top segment)
-      ctx.fillStyle = '#FFFFFF';
-      ctx.beginPath();
-      ctx.moveTo(centerX - 10, centerY - outerRadius - 4);
-      ctx.lineTo(centerX + 10, centerY - outerRadius - 4);
-      ctx.lineTo(centerX, centerY - outerRadius + 12);
-      ctx.closePath();
-      ctx.fill();
     }
 
-    drawWheel(0);
+    initWheelTexture();
 
     function selectChip(amount, btn) {
       selectedChipRupees = amount;
@@ -379,33 +374,27 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
       }).join('');
     }
 
+    // 120 FPS GPU Composited Wheel Animation
     function triggerSpinAnimation(winningIndex) {
       if (isSpinningAnimation) return;
       isSpinningAnimation = true;
 
       const totalSegments = 32;
-      const anglePerSegment = (2 * Math.PI) / totalSegments;
-      const targetAngle = (3 * 2 * Math.PI) - (winningIndex * anglePerSegment);
+      const degPerSegment = 360 / totalSegments;
+      const segmentCenterDeg = (winningIndex + 0.5) * degPerSegment;
+      const extraSpins = 5 * 360;
 
-      let start = null;
-      const duration = 4000;
+      // Top indicator arrow is at 12 o'clock (270 deg)
+      const targetDeg = currentRotationDeg + extraSpins + (360 - (currentRotationDeg % 360)) + (270 - segmentCenterDeg);
+      currentRotationDeg = targetDeg;
 
-      function step(timestamp) {
-        if (!start) start = timestamp;
-        const progress = Math.min((timestamp - start) / duration, 1);
-        const easeOut = 1 - Math.pow(1 - progress, 3);
-        currentRotation = targetAngle * easeOut;
+      canvas.style.transition = 'transform 4.5s cubic-bezier(0.12, 0.85, 0.22, 1)';
+      canvas.style.willChange = 'transform';
+      canvas.style.transform = 'rotate(' + targetDeg + 'deg) translate3d(0, 0, 0)';
 
-        drawWheel(currentRotation);
-
-        if (progress < 1) {
-          requestAnimationFrame(step);
-        } else {
-          isSpinningAnimation = false;
-        }
-      }
-
-      requestAnimationFrame(step);
+      setTimeout(() => {
+        isSpinningAnimation = false;
+      }, 4600);
     }
 
     // Auto Poll State every 1s
@@ -430,8 +419,7 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
 </html>
   `;
 
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
+  // Smart caching: Page shell cached locally; state is live-polled
+  res.setHeader('Cache-Control', 'public, max-age=1800, stale-while-revalidate=86400');
   res.send(html);
 });
