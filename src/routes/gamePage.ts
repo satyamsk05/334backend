@@ -126,8 +126,49 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
     /* Top Header */
     .top-header { display: flex; justify-content: space-between; align-items: center; height: 48px; }
     .btn-back { display: flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 700; color: #FFFFFF; background: transparent; border: none; cursor: pointer; }
-    .wallet-pill { background: #10B981; color: white; padding: 6px 14px; border-radius: 20px; display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
-    .wallet-pill span.plus { font-size: 16px; border-left: 1px solid rgba(255,255,255,0.3); padding-left: 8px; }
+    
+    /* Native App Style Wallet Chip (Matching WalletChip.kt & Screenshot 2) */
+    .wallet-chip-container { position: relative; display: inline-flex; align-items: center; height: 38px; cursor: pointer; }
+    .wallet-chip-container:active { transform: scale(0.96); }
+    .wallet-pill-bg {
+      height: 36px;
+      margin-left: 12px;
+      padding-left: 30px;
+      padding-right: 14px;
+      background: #1B2230;
+      border: 1px solid #2F394C;
+      border-radius: 9999px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .wallet-amount-text {
+      font-family: 'Rubik', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      color: #FFFFFF;
+      letter-spacing: 0.3px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .wallet-coin-icon {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #FFE082, #FFB800 60%, #B45309 100%);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      line-height: 1;
+      border: 1.5px solid #FEF08A;
+      pointer-events: none;
+    }
 
     /* Canvas Stage Area */
     .canvas-stage { width: 100%; position: relative; display: flex; justify-content: center; align-items: center; margin: 10px 0; }
@@ -167,9 +208,11 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
     <!-- Top Header -->
     <div class="top-header">
       <button class="btn-back" onclick="goBack()">◄ Back</button>
-      <div class="wallet-pill" onclick="openDeposit()">
-        <span id="walletText">₹${(wallet.totalPaise / 100).toFixed(2)}</span>
-        <span class="plus">+</span>
+      <div class="wallet-chip-container" onclick="openDeposit()">
+        <div class="wallet-pill-bg">
+          <span class="wallet-amount-text" id="walletText">${(wallet.totalPaise / 100).toFixed(2)}</span>
+        </div>
+        <div class="wallet-coin-icon">⭐</div>
       </div>
     </div>
 
@@ -195,25 +238,25 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
       <div class="bet-grid">
         <div class="card-bet card-2x" onclick="placeBet('2x')">
           <div class="mult-val">2x</div>
-          <div class="placed-badge" id="betBadge2x" style="display:none;">₹0</div>
+          <div class="placed-badge" id="betBadge2x" style="display:none;">0</div>
         </div>
         <div class="card-bet card-3x" onclick="placeBet('3x')">
           <div class="mult-val">3x</div>
-          <div class="placed-badge" id="betBadge3x" style="display:none;">₹0</div>
+          <div class="placed-badge" id="betBadge3x" style="display:none;">0</div>
         </div>
         <div class="card-bet card-5x" onclick="placeBet('5x')">
           <div class="mult-val">5x</div>
-          <div class="placed-badge" id="betBadge5x" style="display:none;">₹0</div>
+          <div class="placed-badge" id="betBadge5x" style="display:none;">0</div>
         </div>
         <div class="card-bet card-30x" onclick="placeBet('30x')">
           <div class="mult-val">30x</div>
-          <div class="placed-badge" id="betBadge30x" style="display:none;">₹0</div>
+          <div class="placed-badge" id="betBadge30x" style="display:none;">0</div>
         </div>
       </div>
 
-      <!-- Bottom Chip Selection Bar -->
+      <!-- Bottom Chip Selection Bar (Numbers only, no currency symbol) -->
       <div class="chip-bar">
-        <button class="chip-btn active" onclick="selectChip(10, this)"><span class="inr-tag">INR</span>10</button>
+        <button class="chip-btn active" onclick="selectChip(10, this)">10</button>
         <button class="chip-btn" onclick="selectChip(500, this)">500</button>
         <button class="chip-btn" onclick="selectChip(2000, this)">2K</button>
         <button class="chip-btn" onclick="selectChip(5000, this)">5K</button>
@@ -329,7 +372,7 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
       const wallet = data.wallet;
 
       currentPhase = state.phase;
-      document.getElementById('walletText').innerText = '₹' + (wallet.totalPaise / 100).toFixed(2);
+      document.getElementById('walletText').innerText = (wallet.totalPaise / 100).toFixed(2);
       document.getElementById('timerText').innerText = state.secondsRemaining + 's';
 
       if (state.phase === 'BETTING') {
@@ -343,7 +386,7 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
         document.getElementById('phaseText').innerText = 'WIN: ' + state.winningType;
       }
 
-      // Update User Bets Badges
+      // Update User Bets Badges (Numbers only)
       updateBetBadge('betBadge2x', state.userBets.grey2x);
       updateBetBadge('betBadge3x', state.userBets.purple3x);
       updateBetBadge('betBadge5x', state.userBets.orange5x);
@@ -356,7 +399,7 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
     function updateBetBadge(elementId, paise) {
       const badge = document.getElementById(elementId);
       if (paise > 0) {
-        badge.innerText = '₹' + (paise / 100).toFixed(0);
+        badge.innerText = (paise / 100).toFixed(0);
         badge.style.display = 'block';
       } else {
         badge.style.display = 'none';
