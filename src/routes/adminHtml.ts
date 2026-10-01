@@ -160,6 +160,20 @@ export function getAdminDashboardHtml(): string {
     <script>
         let adminToken = localStorage.getItem('adminToken') || '';
 
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function safeId(value) {
+            const id = String(value ?? '');
+            return /^[a-zA-Z0-9_-]+$/.test(id) ? id : '';
+        }
+
         async function attemptLogin() {
             const username = document.getElementById('usernameInput').value.trim();
             const password = document.getElementById('passwordInput').value.trim();
@@ -255,9 +269,9 @@ export function getAdminDashboardHtml(): string {
 
             tbody.innerHTML = users.map(u => \`
                 <tr>
-                    <td style="font-family: monospace;">\${u.id || u.userId}</td>
-                    <td>\${u.name || 'Player'}</td>
-                    <td>\${u.phone || '-'}</td>
+                    <td style="font-family: monospace;">\${escapeHtml(u.id || u.userId)}</td>
+                    <td>\${escapeHtml(u.name || 'Player')}</td>
+                    <td>\${escapeHtml(u.phone || '-')}</td>
                     <td>\${u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td>
                     <td><span class="\${u.isBanned ? 'badge-danger' : 'badge-success'}">\${u.isBanned ? 'BANNED' : 'ACTIVE'}</span></td>
                 </tr>
@@ -276,15 +290,15 @@ export function getAdminDashboardHtml(): string {
 
             tbody.innerHTML = deposits.map(d => \`
                 <tr>
-                    <td style="font-family: monospace;">\${d.depositId}</td>
-                    <td>\${d.userId}</td>
-                    <td style="color: #4ADE80; font-weight: 700;">₹\${d.amountRupees.toFixed(2)}</td>
-                    <td><span class="utr-tag">\${d.utr || 'Not Submitted'}</span></td>
+                    <td style="font-family: monospace;">\${escapeHtml(d.depositId)}</td>
+                    <td>\${escapeHtml(d.userId)}</td>
+                    <td style="color: #4ADE80; font-weight: 700;">₹\${Number(d.amountRupees).toFixed(2)}</td>
+                    <td><span class="utr-tag">\${escapeHtml(d.utr || 'Not Submitted')}</span></td>
                     <td>\${new Date(d.createdAt).toLocaleString()}</td>
-                    <td><span class="badge-pending">\${d.status}</span></td>
+                    <td><span class="badge-pending">\${escapeHtml(d.status)}</span></td>
                     <td>
-                        <button class="btn-action btn-approve" onclick="handleDepositAction('\${d.depositId}', 'APPROVE')">✓ APPROVE</button>
-                        <button class="btn-action btn-reject" onclick="handleDepositAction('\${d.depositId}', 'REJECT')">✕ REJECT</button>
+                        <button class="btn-action btn-approve" onclick="handleDepositAction('\${safeId(d.depositId)}', 'APPROVE')">✓ APPROVE</button>
+                        <button class="btn-action btn-reject" onclick="handleDepositAction('\${safeId(d.depositId)}', 'REJECT')">✕ REJECT</button>
                     </td>
                 </tr>
             \`).join('');
@@ -302,15 +316,15 @@ export function getAdminDashboardHtml(): string {
 
             tbody.innerHTML = withdrawals.map(w => \`
                 <tr>
-                    <td style="font-family: monospace;">\${w.withdrawalId}</td>
-                    <td>\${w.userId}</td>
-                    <td style="color: #F87171; font-weight: 700;">₹\${w.amountRupees.toFixed(2)}</td>
-                    <td style="font-family: monospace; color: #DDD6FE;">\${w.upiId}</td>
+                    <td style="font-family: monospace;">\${escapeHtml(w.withdrawalId)}</td>
+                    <td>\${escapeHtml(w.userId)}</td>
+                    <td style="color: #F87171; font-weight: 700;">₹\${Number(w.amountRupees).toFixed(2)}</td>
+                    <td style="font-family: monospace; color: #DDD6FE;">\${escapeHtml(w.upiId)}</td>
                     <td>\${new Date(w.createdAt).toLocaleString()}</td>
-                    <td><span class="badge-pending">\${w.status}</span></td>
+                    <td><span class="badge-pending">\${escapeHtml(w.status)}</span></td>
                     <td>
-                        <button class="btn-action btn-approve" onclick="handleWithdrawalAction('\${w.withdrawalId}', 'APPROVE')">✓ APPROVE</button>
-                        <button class="btn-action btn-reject" onclick="handleWithdrawalAction('\${w.withdrawalId}', 'REJECT')">✕ REJECT</button>
+                        <button class="btn-action btn-approve" onclick="handleWithdrawalAction('\${safeId(w.withdrawalId)}', 'APPROVE')">✓ APPROVE</button>
+                        <button class="btn-action btn-reject" onclick="handleWithdrawalAction('\${safeId(w.withdrawalId)}', 'REJECT')">✕ REJECT</button>
                     </td>
                 </tr>
             \`).join('');

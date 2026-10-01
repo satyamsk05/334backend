@@ -4,6 +4,7 @@ import { RingOfFutureEngine, MultiplierType } from '../game/RingOfFutureEngine';
 import { WalletLedger } from '../services/WalletLedger';
 import { envConfig } from '../config/env.config';
 import { authenticateJwt, optionalAuthenticateJwt } from '../modules/auth/auth.middleware';
+import { PageAccessTicket } from '../services/PageAccessTicket';
 
 export const gamePageRouter = Router();
 
@@ -26,6 +27,14 @@ function resolveUserIdFromRequest(req: Request): string {
   }
 
   return '';
+}
+
+function mintShortLivedPageJwt(userId: string): string {
+  return jwt.sign(
+    { userId, purpose: 'game-page' },
+    envConfig.jwtSecret,
+    { expiresIn: '15m' }
+  );
 }
 
 gamePageRouter.get('/api/v1/ring-of-future/state', optionalAuthenticateJwt, async (req: Request, res: Response) => {
@@ -72,25 +81,31 @@ gamePageRouter.post('/api/v1/ring-of-future/bet', authenticateJwt, async (req: R
 });
 
 gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) => {
-  let token = (req.query.token as string) || '';
-  let userId = '';
+  const ticketParam = typeof req.query.ticket === 'string' ? req.query.ticket : '';
+  const ticketPayload = await PageAccessTicket.resolve(ticketParam, 'game');
 
-  if (token) {
+  let userId = ticketPayload?.userId || '';
+  let sessionJwt = '';
+
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith('Bearer ')) {
+    sessionJwt = authHeader.slice(7).trim();
     try {
-      const decoded: any = jwt.verify(token, envConfig.jwtSecret);
-      userId = decoded.userId || decoded.id || '';
+      const decoded: any = jwt.verify(sessionJwt, envConfig.jwtSecret);
+      userId = decoded.userId || decoded.id || userId;
     } catch {
-      // Invalid token
+      sessionJwt = '';
     }
   }
 
-  if (!userId) {
-    userId = (req.query.userId as string) || '';
+  if (!userId || !/^[a-zA-Z0-9_-]+$/.test(userId)) {
+    return res.status(401).send('<div style="padding: 20px; font-family: sans-serif; text-align: center; color: red;"><h3>Error: Authentication required to access Ring of Future.</h3></div>');
   }
 
-  if (!userId || !/^[a-zA-Z0-9_-]+$/.test(userId)) {
-    return res.status(400).send('<div style="padding: 20px; font-family: sans-serif; text-align: center; color: red;"><h3>Error: Valid userId or token parameter is required to access Ring of Future.</h3></div>');
-  }
+  // Embed a short-lived page JWT for in-page fetch calls — never the long-lived session JWT from the URL
+  const pageJwt = mintShortLivedPageJwt(userId);
+  // Opaque ticket for deposit deep-links from this page
+  const payTicket = await PageAccessTicket.issue(userId, 'pay', { amountRupees: 500 });
 
   const wallet = await WalletLedger.getUserBalance(userId);
   const initialState = RingOfFutureEngine.getSnapshotForUser(userId);
@@ -205,7 +220,8 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
 
   <script>
     const userId = ${JSON.stringify(userId)};
-    const authToken = ${JSON.stringify(token)};
+    const authToken = ${JSON.stringify(pageJwt)};
+    const payAccessTicket = ${JSON.stringify(payTicket)};
     let selectedChipRupees = 10;
     let currentPhase = "${initialState.phase}";
     let targetSegmentIndex = ${initialState.winningSegmentIndex};
@@ -282,7 +298,7 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
     }
 
     function openDeposit() {
-      window.location.href = '/pay?userId=' + encodeURIComponent(userId) + '&amount=500' + (authToken ? '&token=' + encodeURIComponent(authToken) : '');
+      window.location.href = '/pay?ticket=' + encodeURIComponent(payAccessTicket) + '&amount=500';
     }
 
     async function placeBet(multiplierType) {
@@ -399,7 +415,7 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
         if (authToken) {
           headers['Authorization'] = 'Bearer ' + authToken;
         }
-        const res = await fetch('/api/v1/ring-of-future/state?userId=' + encodeURIComponent(userId) + (authToken ? '&token=' + encodeURIComponent(authToken) : ''), { headers });
+        const res = await fetch('/api/v1/ring-of-future/state', { headers });
         const data = await res.json();
         if (data.success) {
           updateUI(data.data);

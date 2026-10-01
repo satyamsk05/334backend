@@ -4,14 +4,29 @@ import jwt from 'jsonwebtoken';
 import { FinancialService } from '../services/FinancialService';
 import { envConfig } from '../config/env.config';
 import { authenticateJwt } from '../modules/auth/auth.middleware';
+import { PageAccessTicket } from '../services/PageAccessTicket';
 
 export const depositPageRouter = Router();
 
 const MERCHANT_UPI_ID = process.env.PAYMENT_UPI_ID || process.env.MERCHANT_UPI_ID || 'satyamskk@ptyes';
 const MERCHANT_NAME = process.env.PAYMENT_MERCHANT_NAME || process.env.MERCHANT_NAME || 'satyam';
 
+function resolveBearerUserId(req: Request): string {
+  const authHeader = req.headers.authorization;
+  const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  if (bearer) {
+    try {
+      const decoded: any = jwt.verify(bearer, envConfig.jwtSecret);
+      return decoded.userId || decoded.id || '';
+    } catch {
+      // fall through
+    }
+  }
+  return '';
+}
+
 // Deposit Initiate API (Requires valid JWT authentication)
-depositPageRouter.post('/api/v1/deposits/initiate', authenticateJwt, (req: Request, res: Response) => {
+depositPageRouter.post('/api/v1/deposits/initiate', authenticateJwt, async (req: Request, res: Response) => {
   const authenticatedUserId = (req as any).user?.userId || (req as any).user?.id;
   if (!authenticatedUserId) {
     return res.status(401).json({ success: false, message: 'Authentication required' });
@@ -35,14 +50,50 @@ depositPageRouter.post('/api/v1/deposits/initiate', authenticateJwt, (req: Reque
   );
 
   const order = existing || FinancialService.initiateDeposit(effectiveUserId, num);
+  const ticket = await PageAccessTicket.issue(effectiveUserId, 'pay', {
+    orderId: order.depositId,
+    amountRupees: order.amountRupees,
+  });
 
   res.json({
     success: true,
     data: {
       depositId: order.depositId,
       amountRupees: order.amountRupees,
-      payUrl: `/pay?orderId=${encodeURIComponent(order.depositId)}&userId=${encodeURIComponent(effectiveUserId)}&amount=${order.amountRupees}`
+      payUrl: `/pay?ticket=${encodeURIComponent(ticket)}&orderId=${encodeURIComponent(order.depositId)}&amount=${order.amountRupees}`
     }
+  });
+});
+
+/** Mint a short-lived opaque pay ticket so clients never put session JWTs in browser URLs. */
+depositPageRouter.post('/api/v1/deposits/pay-session', authenticateJwt, async (req: Request, res: Response) => {
+  const authenticatedUserId = (req as any).user?.userId || (req as any).user?.id;
+  if (!authenticatedUserId) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+
+  const amountRaw = parseFloat(req.body?.amountRupees);
+  const amountRupees = Math.max(1, Math.min(50000, isNaN(amountRaw) ? 200 : amountRaw));
+
+  const pending = FinancialService.getPendingDeposits();
+  const existing = pending.find(
+    (d) => d.userId === authenticatedUserId && Math.abs(d.amountRupees - amountRupees) < 0.01 && Date.now() - d.createdAt < 15 * 60 * 1000
+  );
+  const order = existing || FinancialService.initiateDeposit(authenticatedUserId, amountRupees);
+
+  const ticket = await PageAccessTicket.issue(authenticatedUserId, 'pay', {
+    orderId: order.depositId,
+    amountRupees: order.amountRupees,
+  });
+
+  return res.json({
+    success: true,
+    data: {
+      ticket,
+      depositId: order.depositId,
+      amountRupees: order.amountRupees,
+      payUrl: `/pay?ticket=${encodeURIComponent(ticket)}&orderId=${encodeURIComponent(order.depositId)}&amount=${order.amountRupees}`,
+    },
   });
 });
 
@@ -112,41 +163,27 @@ depositPageRouter.post('/api/v1/deposits/submit-utr', authenticateJwt, (req: Req
   }
 });
 
-// Auto-UPI Payment Webpage
+// Auto-UPI Payment Webpage — requires Authorization Bearer JWT or short-lived ?ticket=
 depositPageRouter.get('/pay', async (req: Request, res: Response) => {
-  let authenticatedUserId = '';
-  const token = (req.query.token as string) || (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7).trim() : '');
-  if (token) {
-    try {
-      const decoded: any = jwt.verify(token, envConfig.jwtSecret);
-      authenticatedUserId = decoded.userId || decoded.id || '';
-    } catch {}
+  const ticketParam = typeof req.query.ticket === 'string' ? req.query.ticket : '';
+  const ticketPayload = await PageAccessTicket.resolve(ticketParam, 'pay');
+  let authenticatedUserId = ticketPayload?.userId || resolveBearerUserId(req);
+
+  // Reject legacy ?token= JWTs and unauthenticated userId-only access
+  if (!authenticatedUserId) {
+    return res.status(401).send('<div style="padding: 20px; font-family: sans-serif; text-align: center; color: red;"><h3>Error: Authentication required to access payment gateway.</h3></div>');
   }
 
-  const rawOrderId = req.query.orderId as string;
+  const rawOrderId = (req.query.orderId as string) || ticketPayload?.orderId || '';
   let orderId = rawOrderId && /^[a-zA-Z0-9_-]+$/.test(rawOrderId) ? rawOrderId : '';
   const existingOrder = orderId ? FinancialService.getDeposit(orderId) : undefined;
 
-  let userId = authenticatedUserId;
-  if (!userId && existingOrder) {
-    userId = existingOrder.userId;
-  }
-  if (!userId) {
-    userId = (req.query.userId as string);
+  if (existingOrder && existingOrder.userId !== authenticatedUserId) {
+    return res.status(403).send('<div style="padding: 20px; font-family: sans-serif; text-align: center; color: red;"><h3>Error: Unauthorized access to deposit order.</h3></div>');
   }
 
-  if (!userId || !/^[a-zA-Z0-9_-]+$/.test(userId)) {
-    return res.status(400).send('<div style="padding: 20px; font-family: sans-serif; text-align: center; color: red;"><h3>Error: Valid authenticated session or userId required to access payment gateway.</h3></div>');
-  }
-
-  if (authenticatedUserId) {
-    if (existingOrder && existingOrder.userId !== authenticatedUserId) {
-      return res.status(403).send('<div style="padding: 20px; font-family: sans-serif; text-align: center; color: red;"><h3>Error: Unauthorized access to deposit order.</h3></div>');
-    }
-    userId = authenticatedUserId;
-  }
-
-  const amountStr = (req.query.amount as string) || '200';
+  const userId = authenticatedUserId;
+  const amountStr = (req.query.amount as string) || String(ticketPayload?.amountRupees || '200');
   const amountRupees = Math.max(1, Math.min(50000, parseFloat(amountStr) || 200));
 
   // Idempotency: When visited without orderId (first landing or refresh), lock to existing pending order or create once
@@ -163,9 +200,15 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
       orderId = order.depositId;
     }
 
-    // Redirect to canonical URL with orderId so browser refresh NEVER creates a new request
-    const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
-    return res.redirect(302, `/pay?orderId=${encodeURIComponent(orderId)}&userId=${encodeURIComponent(userId)}&amount=${amountRupees}${tokenParam}`);
+    // Canonical URL uses opaque ticket only — never session JWT
+    let redirectTicket = ticketParam;
+    if (!redirectTicket) {
+      redirectTicket = await PageAccessTicket.issue(userId, 'pay', { orderId, amountRupees });
+    }
+    return res.redirect(
+      302,
+      `/pay?ticket=${encodeURIComponent(redirectTicket)}&orderId=${encodeURIComponent(orderId)}&amount=${amountRupees}`
+    );
   }
 
   // Load order details

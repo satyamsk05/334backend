@@ -83,7 +83,7 @@ export function createApp() {
     // NOTE: script-src retains 'unsafe-inline' because the game page (/game) and deposit page
     // (/deposit) serve inline <script> blocks from gamePage.ts and depositPage.ts.
     // These are server-rendered HTML pages, not the admin panel.
-    // The admin panel enforces no unsafe-inline separately via next.config.js CSP headers.
+    // The admin panel enforces CSP separately via next.config.js (allows unsafe-inline for Next hydration).
     res.setHeader('Content-Security-Policy',
       `default-src 'self'; ` +
       `script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; ` +

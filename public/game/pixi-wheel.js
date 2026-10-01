@@ -93,8 +93,31 @@
     }
   };
 
-  window.openDeposit = function () {
-    window.location.href = '/pay?userId=' + userId + '&amount=500';
+  window.openDeposit = async function () {
+    if (typeof payAccessTicket === 'string' && payAccessTicket) {
+      window.location.href = '/pay?ticket=' + encodeURIComponent(payAccessTicket) + '&amount=500';
+      return;
+    }
+    if (typeof authToken === 'string' && authToken) {
+      try {
+        const res = await fetch('/api/v1/deposits/pay-session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + authToken
+          },
+          body: JSON.stringify({ amountRupees: 500 })
+        });
+        const data = await res.json();
+        if (data.success && data.data?.payUrl) {
+          window.location.href = data.data.payUrl;
+          return;
+        }
+      } catch (e) {
+        // fall through
+      }
+    }
+    alert('Authentication required to deposit');
   };
 
   window.placeBet = async function (multiplierType) {
@@ -104,9 +127,13 @@
     }
 
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (typeof authToken === 'string' && authToken) {
+        headers['Authorization'] = 'Bearer ' + authToken;
+      }
       const res = await fetch('/api/v1/ring-of-future/bet', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ userId, multiplierType, amountRupees: selectedChipRupees })
       });
       const data = await res.json();
