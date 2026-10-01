@@ -23,7 +23,7 @@ function resolveUserIdFromRequest(req: Request): string {
       const uid = decoded.userId || decoded.id;
       if (uid) return uid;
     } catch {
-      if (typeof token === 'string' && token.length > 3 && !token.includes('.')) {
+      if (typeof token === 'string' && token.length > 3) {
         return token;
       }
     }

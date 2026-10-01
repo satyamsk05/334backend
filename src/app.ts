@@ -25,8 +25,8 @@ const globalRateLimit = createRateLimiter(60_000, 120);
 const authRateLimit = createRateLimiter(60_000, 20);
 
 export function isAllowedCorsOrigin(origin: string | undefined): boolean {
-  // Allow native mobile apps, postman/curl, server-to-server without origin header
-  if (!origin) return true;
+  // Allow native mobile apps, postman/curl, server-to-server without origin header, or local file asset webviews
+  if (!origin || origin === 'null' || origin === 'file://') return true;
 
   try {
     const url = new URL(origin);
@@ -101,7 +101,7 @@ export function createApp() {
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-User-Id', 'x-user-id']
   }));
   app.use(express.json({ limit: '100kb' }));
   app.use(express.urlencoded({ extended: true, limit: '100kb' }));
