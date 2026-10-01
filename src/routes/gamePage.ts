@@ -186,8 +186,7 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
 
     /* 2x2 Betting Grid */
     .bet-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px; }
-    .card-bet { height: 86px; border-radius: 16px; display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: pointer; transition: transform 0.15s, filter 0.15s; position: relative; box-shadow: 0 6px 16px rgba(0,0,0,0.25); }
-    .card-bet:active { transform: scale(0.96); }
+    .card-bet { height: 86px; border-radius: 16px; display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: pointer; position: relative; box-shadow: 0 6px 16px rgba(0,0,0,0.25); -webkit-tap-highlight-color: transparent; outline: none; }
     .card-bet.card-2x { background: #9CA3AF; color: #111827; }
     .card-bet.card-3x { background: #8B5CF6; color: white; }
     .card-bet.card-5x { background: #F97316; color: white; }
