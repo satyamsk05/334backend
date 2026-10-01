@@ -274,6 +274,7 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
     let targetSegmentIndex = ${initialState.winningSegmentIndex};
     let currentRotationDeg = 0;
     let isSpinningAnimation = false;
+    let lastSpunRoundId = null;
 
     // 32 Segment Colors
     const SEGMENT_COLORS = [
@@ -300,8 +301,10 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
       ctx.translate(centerX, centerY);
 
       for (let i = 0; i < totalSegments; i++) {
-        const startAngle = i * anglePerSegment;
-        const endAngle = startAngle + anglePerSegment;
+        // Segment 0 (30x Green) is centered at 12 o'clock (-Math.PI / 2) under needle
+        const midAngle = -Math.PI / 2 + i * anglePerSegment;
+        const startAngle = midAngle - anglePerSegment / 2;
+        const endAngle = midAngle + anglePerSegment / 2;
 
         ctx.beginPath();
         ctx.arc(0, 0, outerRadius, startAngle, endAngle);
@@ -311,8 +314,8 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
         ctx.fillStyle = SEGMENT_COLORS[i];
         ctx.fill();
 
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = '#222222';
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = '#0A0C11';
         ctx.stroke();
       }
 
@@ -377,11 +380,21 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
 
       if (state.phase === 'BETTING') {
         document.getElementById('phaseText').innerText = 'PLACE BETS';
+        // Always show 30x Green centered under needle during loading / bet placing
+        const targetDeg = Math.ceil(currentRotationDeg / 360) * 360;
+        if (currentRotationDeg !== targetDeg && !isSpinningAnimation) {
+          canvas.style.transition = 'transform 1.2s cubic-bezier(0.25, 1, 0.5, 1)';
+          canvas.style.transform = 'rotate(' + targetDeg + 'deg) translate3d(0, 0, 0)';
+          currentRotationDeg = targetDeg;
+        }
       } else if (state.phase === 'LOCKED') {
         document.getElementById('phaseText').innerText = 'LOCKED';
       } else if (state.phase === 'SPINNING') {
         document.getElementById('phaseText').innerText = 'SPINNING';
-        triggerSpinAnimation(state.winningSegmentIndex);
+        if (lastSpunRoundId !== state.roundId) {
+          lastSpunRoundId = state.roundId;
+          triggerSpinAnimation(state.winningSegmentIndex);
+        }
       } else if (state.phase === 'RESULT_SHOW') {
         document.getElementById('phaseText').innerText = 'WIN: ' + state.winningType;
       }
@@ -424,11 +437,17 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
 
       const totalSegments = 32;
       const degPerSegment = 360 / totalSegments;
-      const segmentCenterDeg = (winningIndex + 0.5) * degPerSegment;
+      // Segment 0 (30x Green) is centered at 12 o'clock (-90 deg).
+      // Segment i is located at (i * degPerSegment) clockwise from 12 o'clock.
+      // Rotating clockwise brings segment i directly under the 12 o'clock needle:
+      const spinOffset = (360 - ((winningIndex * degPerSegment) % 360)) % 360;
+      const currentMod = ((currentRotationDeg % 360) + 360) % 360;
+      let forwardDegrees = spinOffset - currentMod;
+      if (forwardDegrees <= 0) {
+        forwardDegrees += 360;
+      }
       const extraSpins = 5 * 360;
-
-      // Top indicator arrow is at 12 o'clock (270 deg)
-      const targetDeg = currentRotationDeg + extraSpins + (360 - (currentRotationDeg % 360)) + (270 - segmentCenterDeg);
+      const targetDeg = currentRotationDeg + extraSpins + forwardDegrees;
       currentRotationDeg = targetDeg;
 
       canvas.style.transition = 'transform 4.5s cubic-bezier(0.12, 0.85, 0.22, 1)';
