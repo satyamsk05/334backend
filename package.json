@@ -1,7 +1,7 @@
 {
-  "name": "334game-backend",
+  "name": "bitarcade-backend",
   "version": "1.0.0",
-  "description": "Authoritative backend server for 3334Game & Ring of Future",
+  "description": "Authoritative backend server for Bit Arcade Game & Ring of Future",
   "main": "dist/server.js",
   "scripts": {
     "build": "tsc",

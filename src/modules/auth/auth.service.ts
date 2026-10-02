@@ -197,23 +197,27 @@ export class AuthService {
         );
 
         // Record audit session
-        const sessionId = `sess_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
-        await pool.query(
-          `INSERT INTO user_sessions (
-             id, user_id, device_model, os_version, app_version, ip_address, network_type, location, created_at
-           )
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)`,
-          [
-            sessionId,
-            user.id,
-            deviceInfo?.deviceModel || 'Android Device',
-            deviceInfo?.osVersion || 'Android',
-            deviceInfo?.appVersion || '1.0.0',
-            deviceInfo?.ip || '127.0.0.1',
-            deviceInfo?.networkType || 'Mobile',
-            deviceInfo?.location || 'India'
-          ]
-        );
+        try {
+          const sessionId = `sess_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
+          await pool.query(
+            `INSERT INTO user_sessions (
+               id, user_id, device_model, os_version, app_version, ip_address, network_type, location, created_at
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)`,
+            [
+              sessionId,
+              user.id,
+              deviceInfo?.deviceModel || 'Android Device',
+              deviceInfo?.osVersion || 'Android',
+              deviceInfo?.appVersion || '1.0.0',
+              deviceInfo?.ip || '127.0.0.1',
+              deviceInfo?.networkType || 'Mobile',
+              deviceInfo?.location || 'India'
+            ]
+          );
+        } catch (sessErr: any) {
+          Logger.warn(`[AUTH] Non-fatal user_sessions audit record issue: ${sessErr.message}`);
+        }
 
         // Also ensure wallet exists
         await pool.query(

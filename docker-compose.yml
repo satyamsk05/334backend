@@ -3,7 +3,7 @@ version: '3.8'
 services:
   app:
     build: .
-    container_name: 334game-backend
+    container_name: bitarcade-backend
     restart: always
     ports:
       - "4001:4000"

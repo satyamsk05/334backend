@@ -9,7 +9,7 @@ export class TelegramBotService {
 
     const payload = JSON.stringify({
       chat_id: config.telegramChatId,
-      text: `🤖 *334Game Server Alert*\n\n${message}`,
+      text: `🤖 *Bit Arcade Game Server Alert*\n\n${message}`,
       parse_mode: 'Markdown'
     });
 

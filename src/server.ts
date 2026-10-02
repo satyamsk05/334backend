@@ -94,7 +94,7 @@ async function bootstrap() {
 
     Logger.info(`
 ==================================================
-🚀 334GAME AUTHORITATIVE BACKEND CORE ONLINE!
+🚀 BIT ARCADE GAME AUTHORITATIVE BACKEND CORE ONLINE!
 🌐 Local API:     http://localhost:${envConfig.port}/api/v1
 🌍 Public Server: ${httpProto}://${host}:${envConfig.port}/api/v1
 👑 Admin Panel:   ${httpProto}://${host}:${envConfig.port}/admin

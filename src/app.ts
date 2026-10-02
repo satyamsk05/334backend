@@ -43,8 +43,8 @@ export function isAllowedCorsOrigin(origin: string | undefined): boolean {
       return true;
     }
 
-    // Allow exact verified Admin panel origin only (NO arbitrary *.vercel.app wildcard)
-    if (origin === 'https://adminpenal-six.vercel.app') {
+    // Allow exact verified Admin panel and Payment Gateway origins only (NO arbitrary *.vercel.app wildcard)
+    if (origin === 'https://adminpenal-six.vercel.app' || origin === 'https://bitarcade-pay.vercel.app') {
       return true;
     }
 

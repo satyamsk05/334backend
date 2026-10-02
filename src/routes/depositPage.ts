@@ -232,7 +232,7 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>AUTO UPI Payment - 334Game</title>
+  <title>AUTO UPI Payment - Bit Arcade Game</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
@@ -829,7 +829,10 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
 
     function returnToApp() {
       // Try custom deep link or close tab
-      window.location.href = 'app334://payment-success?orderId=' + encodeURIComponent(orderId);
+      window.location.href = 'bitarcade://payment-success?orderId=' + encodeURIComponent(orderId);
+      setTimeout(() => {
+        try { window.location.href = 'app334://payment-success?orderId=' + encodeURIComponent(orderId); } catch(e) {}
+      }, 500);
       setTimeout(() => {
         try { window.close(); } catch(e) {}
       }, 1000);

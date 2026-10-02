@@ -4,7 +4,7 @@ export function getAdminDashboardHtml(): string {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>334GAME - SuperAdmin Control Panel</title>
+    <title>Bit Arcade Game - SuperAdmin Control Panel</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Outfit', sans-serif; }
@@ -57,7 +57,7 @@ export function getAdminDashboardHtml(): string {
     <div id="dashboardSection" class="dashboard-content">
         <div class="header">
             <div>
-                <h1>👑 334GAME SuperAdmin Panel</h1>
+                <h1>👑 Bit Arcade Game SuperAdmin Panel</h1>
                 <p style="color: #A098B2; font-size: 13px;">Authoritative Financial & Control Engine</p>
             </div>
             <div>

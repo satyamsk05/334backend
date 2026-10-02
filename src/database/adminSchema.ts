@@ -91,6 +91,14 @@ export class AdminSchema {
       );
       CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id, created_at DESC);
 
+      -- Ensure audit columns exist in user_sessions for legacy tables
+      ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS device_model VARCHAR(128);
+      ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS os_version VARCHAR(128);
+      ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS app_version VARCHAR(32);
+      ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS ip_address VARCHAR(64);
+      ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS network_type VARCHAR(64);
+      ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS location VARCHAR(128);
+
       -- 6. Extend games table with columns if missing
       ALTER TABLE games ADD COLUMN IF NOT EXISTS version VARCHAR(32) DEFAULT '1.0.0';
       ALTER TABLE games ADD COLUMN IF NOT EXISTS display_order INT DEFAULT 0;

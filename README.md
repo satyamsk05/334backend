@@ -1,4 +1,4 @@
-# Backend Service — 3334Game
+# Backend Service — Bit Arcade Game
 
 Authoritative server backend responsible for:
 - User Authentication & Session Verification (`auth/`)

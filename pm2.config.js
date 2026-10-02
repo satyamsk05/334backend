@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: '334game-backend',
+      name: 'bitarcade-backend',
       script: 'dist/server.js',
       instances: 1,
       autorestart: true,
