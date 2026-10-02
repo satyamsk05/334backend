@@ -100,7 +100,7 @@ export class AdminController {
           SELECT l.id, l.user_id, l.type as transaction_type, l.type, l.amount, l.direction,
                  l.reference_type, l.reference_id, l.balance_before, l.balance_after,
                  l.metadata, l.created_at,
-                 u.name as user_name, u.phone as user_phone
+                 u.username as user_name, u.phone as user_phone
           FROM wallet_ledger l
           LEFT JOIN users u ON u.id = l.user_id
           ORDER BY l.created_at DESC

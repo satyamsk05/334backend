@@ -57,13 +57,16 @@ async function resetAllData() {
       'deposits',
       'withdrawals',
       'payment_webhook_events',
+      'transactions',
       'wallet_ledger',
+      'wallet_balances',
       'user_sessions',
       'wallets',
       'users',
       'notifications',
       'audit_logs',
-      'admin_notes'
+      'admin_notes',
+      'admin_sessions'
     ];
 
     for (const table of tablesToTruncate) {
