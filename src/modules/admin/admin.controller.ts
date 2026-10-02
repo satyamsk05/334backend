@@ -97,9 +97,13 @@ export class AdminController {
           FROM wallet_ledger
         `),
         pool.query(`
-          SELECT id, admin_id, action, target, details, created_at
-          FROM audit_logs
-          ORDER BY created_at DESC
+          SELECT l.id, l.user_id, l.type as transaction_type, l.type, l.amount, l.direction,
+                 l.reference_type, l.reference_id, l.balance_before, l.balance_after,
+                 l.metadata, l.created_at,
+                 u.name as user_name, u.phone as user_phone
+          FROM wallet_ledger l
+          LEFT JOIN users u ON u.id = l.user_id
+          ORDER BY l.created_at DESC
           LIMIT 10
         `)
       ]);
@@ -115,37 +119,100 @@ export class AdminController {
       const tablePayouts = Number(betStats.rows[0]?.total_payouts || 0);
       const ledgerPayouts = Number(ledgerStats.rows[0]?.total_payouts || 0);
 
+      const totalWageredPaise = Math.max(tableWagered, ledgerWagered);
+      const totalPayoutsPaise = Math.max(tablePayouts, ledgerPayouts);
+      const ggrPaise = Math.max(0, totalWageredPaise - totalPayoutsPaise);
+
+      const totalUsers = Number(usersStats.rows[0].total_users || 0);
+      const activeUsers = Number(usersStats.rows[0].active_users || 0);
+      const bannedUsers = Number(usersStats.rows[0].banned_users || 0);
+      const newUsers = Number(usersStats.rows[0].new_users || 0);
+
+      const totalDepositPaise = Number(walletStats.rows[0].total_deposit || 0);
+      const totalWinningPaise = Number(walletStats.rows[0].total_winning || 0);
+      const totalBonusPaise = Number(walletStats.rows[0].total_bonus || 0);
+      const totalAvailablePaise = Number(walletStats.rows[0].total_available || 0);
+
+      const approvedDepositsPaise = Number(depositStats.rows[0].approved_amount || 0);
+      const pendingDepositsCount = Number(depositStats.rows[0].pending_count || 0);
+      const pendingDepositsPaise = Number(depositStats.rows[0].pending_amount || 0);
+
+      const approvedWithdrawalsPaise = Number(withdrawStats.rows[0].approved_amount || 0);
+      const pendingWithdrawalsCount = Number(withdrawStats.rows[0].pending_count || 0);
+      const pendingWithdrawalsPaise = Number(withdrawStats.rows[0].pending_amount || 0);
+
+      const formattedActivity = recentActivity.rows.map((r: any) => {
+        let meta: any = {};
+        if (typeof r.metadata === 'string') {
+          try { meta = JSON.parse(r.metadata); } catch {}
+        } else if (r.metadata) {
+          meta = r.metadata;
+        }
+        return {
+          id: r.id,
+          user_id: r.user_id,
+          user_name: r.user_name || r.user_phone || r.user_id,
+          transaction_type: r.transaction_type || r.type || 'DEPOSIT',
+          bucket: r.reference_type || 'main',
+          amount: Number(r.amount || 0),
+          balance_after: Number(r.balance_after || 0),
+          direction: r.direction || 'CREDIT',
+          reference_id: r.reference_id || '',
+          description: meta.description || r.reference_type || r.reference_id || 'System transaction',
+          created_at: r.created_at
+        };
+      });
+
       const data = {
         users: {
-          total: Number(usersStats.rows[0].total_users),
-          active: Number(usersStats.rows[0].active_users),
-          banned: Number(usersStats.rows[0].banned_users),
-          new: Number(usersStats.rows[0].new_users)
+          total: totalUsers,
+          active: activeUsers,
+          banned: bannedUsers,
+          new: newUsers,
+          totalUsers,
+          activeUsers,
+          bannedUsers,
+          newUsers
         },
         financials: {
-          totalDepositPaise: Number(walletStats.rows[0].total_deposit),
-          totalWinningPaise: Number(walletStats.rows[0].total_winning),
-          totalBonusPaise: Number(walletStats.rows[0].total_bonus),
-          totalAvailablePaise: Number(walletStats.rows[0].total_available),
-          approvedDepositsPaise: Number(depositStats.rows[0].approved_amount),
-          pendingDepositsCount: Number(depositStats.rows[0].pending_count),
-          pendingDepositsPaise: Number(depositStats.rows[0].pending_amount),
-          approvedWithdrawalsPaise: Number(withdrawStats.rows[0].approved_amount),
-          pendingWithdrawalsCount: Number(withdrawStats.rows[0].pending_count),
-          pendingWithdrawalsPaise: Number(withdrawStats.rows[0].pending_amount)
+          totalDepositPaise,
+          totalWinningPaise,
+          totalBonusPaise,
+          totalAvailablePaise,
+          approvedDepositsPaise,
+          pendingDepositsCount,
+          pendingDepositsPaise,
+          approvedWithdrawalsPaise,
+          pendingWithdrawalsCount,
+          pendingWithdrawalsPaise
+        },
+        wallet: {
+          totalDepositPaise,
+          totalWinningPaise,
+          totalBonusPaise,
+          totalAvailablePaise
+        },
+        deposits: {
+          approvedAmountPaise: approvedDepositsPaise,
+          pendingCount: pendingDepositsCount,
+          pendingAmountPaise: pendingDepositsPaise
+        },
+        withdrawals: {
+          approvedAmountPaise: approvedWithdrawalsPaise,
+          pendingCount: pendingWithdrawalsCount,
+          pendingAmountPaise: pendingWithdrawalsPaise
         },
         games: {
           totalRounds: Math.max(totalRoundsPlayed, totalRoundsInDb),
+          totalRoundsPlayed: Math.max(totalRoundsPlayed, totalRoundsInDb),
           engineRounds: totalRoundsPlayed,
           totalBets: Math.max(tableBetsCount, ledgerBetsCount),
-          totalWageredPaise: Math.max(tableWagered, ledgerWagered),
-          totalPayoutsPaise: Math.max(tablePayouts, ledgerPayouts),
+          totalWageredPaise,
+          totalPayoutsPaise,
+          ggrPaise,
           activeGames: 2
         },
-        recentActivity: recentActivity.rows.map((r: any) => ({
-          ...r,
-          details: typeof r.details === 'string' ? JSON.parse(r.details) : (r.details || {})
-        }))
+        recentActivity: formattedActivity
       };
 
       return ResponseHandler.success(res, data, 'Dashboard metrics fetched');

@@ -55,12 +55,17 @@ depositPageRouter.post('/api/v1/deposits/initiate', authenticateJwt, async (req:
     amountRupees: order.amountRupees,
   });
 
+  const gatewayBase = process.env.PAYMENT_GATEWAY_URL || 'https://bitarcade-pay.vercel.app';
+  const payPath = `/pay?ticket=${encodeURIComponent(ticket)}&orderId=${encodeURIComponent(order.depositId)}&amount=${order.amountRupees}`;
+  const paymentUrl = `${gatewayBase.replace(/\/$/, '')}${payPath}`;
+
   res.json({
     success: true,
     data: {
       depositId: order.depositId,
       amountRupees: order.amountRupees,
-      payUrl: `/pay?ticket=${encodeURIComponent(ticket)}&orderId=${encodeURIComponent(order.depositId)}&amount=${order.amountRupees}`
+      payUrl: payPath,
+      paymentUrl: paymentUrl
     }
   });
 });
@@ -86,13 +91,18 @@ depositPageRouter.post('/api/v1/deposits/pay-session', authenticateJwt, async (r
     amountRupees: order.amountRupees,
   });
 
+  const gatewayBase = process.env.PAYMENT_GATEWAY_URL || 'https://bitarcade-pay.vercel.app';
+  const payPath = `/pay?ticket=${encodeURIComponent(ticket)}&orderId=${encodeURIComponent(order.depositId)}&amount=${order.amountRupees}`;
+  const paymentUrl = `${gatewayBase.replace(/\/$/, '')}${payPath}`;
+
   return res.json({
     success: true,
     data: {
       ticket,
       depositId: order.depositId,
       amountRupees: order.amountRupees,
-      payUrl: `/pay?ticket=${encodeURIComponent(ticket)}&orderId=${encodeURIComponent(order.depositId)}&amount=${order.amountRupees}`,
+      payUrl: payPath,
+      paymentUrl: paymentUrl,
     },
   });
 });
@@ -163,15 +173,104 @@ depositPageRouter.post('/api/v1/deposits/submit-utr', authenticateJwt, (req: Req
   }
 });
 
-// Auto-UPI Payment Webpage — requires Authorization Bearer JWT or short-lived ?ticket=
+// Auto-UPI Payment Webpage — requires short-lived ?ticket=, verified ?token=, or Authorization Bearer JWT
 depositPageRouter.get('/pay', async (req: Request, res: Response) => {
   const ticketParam = typeof req.query.ticket === 'string' ? req.query.ticket : '';
   const ticketPayload = await PageAccessTicket.resolve(ticketParam, 'pay');
   let authenticatedUserId = ticketPayload?.userId || resolveBearerUserId(req);
 
-  // Reject legacy ?token= JWTs and unauthenticated userId-only access
+  // Fallback: verify token JWT param if ticket / bearer header wasn't present
   if (!authenticatedUserId) {
-    return res.status(401).send('<div style="padding: 20px; font-family: sans-serif; text-align: center; color: red;"><h3>Error: Authentication required to access payment gateway.</h3></div>');
+    const tokenParam = typeof req.query.token === 'string' ? req.query.token : '';
+    if (tokenParam) {
+      try {
+        const decoded: any = jwt.verify(tokenParam, envConfig.jwtSecret);
+        authenticatedUserId = decoded.userId || decoded.id || '';
+      } catch {
+        // invalid token
+      }
+    }
+  }
+
+  // Reject unauthenticated access
+  if (!authenticatedUserId) {
+    return res.status(401).send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bit Arcade — Authentication Required</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Outfit', sans-serif; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: radial-gradient(circle at 50% 20%, #1e1035 0%, #0a0414 100%);
+      color: #FFFFFF;
+      padding: 24px;
+      text-align: center;
+    }
+    .card {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-radius: 24px;
+      padding: 36px 24px;
+      max-width: 420px;
+      width: 100%;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    }
+    .badge-lock {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #F87171;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 20px;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 800;
+      margin-bottom: 12px;
+      color: #FFFFFF;
+    }
+    p {
+      color: #94A3B8;
+      font-size: 14px;
+      line-height: 1.6;
+      margin-bottom: 20px;
+    }
+    .instructions {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 14px 16px;
+      font-size: 13px;
+      color: #CBD5E1;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge-lock">🔒 Authentication Required</div>
+    <h1>Authentication Required</h1>
+    <p>Please open the deposit page directly from your Bit Arcade Game app to continue.</p>
+    <div class="instructions">
+      Open Bit Arcade App &rarr; Go to <strong>Add Cash</strong> &rarr; Select chips package to deposit.
+    </div>
+  </div>
+</body>
+</html>`);
   }
 
   const rawOrderId = (req.query.orderId as string) || ticketPayload?.orderId || '';
@@ -186,8 +285,8 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
   const amountStr = (req.query.amount as string) || String(ticketPayload?.amountRupees || '200');
   const amountRupees = Math.max(1, Math.min(50000, parseFloat(amountStr) || 200));
 
-  // Idempotency: When visited without orderId (first landing or refresh), lock to existing pending order or create once
-  if (!orderId) {
+  // If visited with token instead of ticket, or without orderId, redirect to canonical ticket URL
+  if (!orderId || (req.query.token && !ticketParam)) {
     const pending = FinancialService.getPendingDeposits();
     const existing = pending.find(
       (d) => d.userId === userId && Math.abs(d.amountRupees - amountRupees) < 0.01 && Date.now() - d.createdAt < 15 * 60 * 1000
@@ -195,16 +294,13 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
 
     if (existing) {
       orderId = existing.depositId;
-    } else {
+    } else if (!orderId) {
       const order = FinancialService.initiateDeposit(userId, amountRupees);
       orderId = order.depositId;
     }
 
-    // Canonical URL uses opaque ticket only — never session JWT
-    let redirectTicket = ticketParam;
-    if (!redirectTicket) {
-      redirectTicket = await PageAccessTicket.issue(userId, 'pay', { orderId, amountRupees });
-    }
+    // Canonical URL uses opaque ticket only — never session JWT in browser history
+    const redirectTicket = await PageAccessTicket.issue(userId, 'pay', { orderId, amountRupees });
     return res.redirect(
       302,
       `/pay?ticket=${encodeURIComponent(redirectTicket)}&orderId=${encodeURIComponent(orderId)}&amount=${amountRupees}`
