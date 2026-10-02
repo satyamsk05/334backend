@@ -224,6 +224,19 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
     .chip-btn { background: #4D455D; color: #D1D5DB; border: none; padding: 10px 14px; border-radius: 14px; font-size: 13px; font-weight: 800; cursor: pointer; transition: all 0.2s; }
     .chip-btn.active { background: #181124; color: #FFFFFF; border: 2px solid #FACE15; box-shadow: 0 0 10px rgba(250, 206, 21, 0.4); }
     .chip-btn .inr-tag { background: #FACE15; color: #000000; font-size: 9px; padding: 2px 4px; border-radius: 4px; margin-right: 4px; font-weight: 900; }
+
+    /* In-game Floating Notice */
+    .game-notice {
+      position: absolute; top: 62px; left: 50%; transform: translateX(-50%) translateY(-15px);
+      background: rgba(30, 41, 59, 0.96); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.16); color: #FFFFFF; padding: 8px 18px; border-radius: 9999px;
+      display: none; align-items: center; gap: 8px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+      z-index: 100; max-width: 90%; opacity: 0; transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .game-notice.show { display: flex; opacity: 1; transform: translateX(-50%) translateY(0); }
+    .game-notice.notice-warning { border-color: rgba(245, 158, 11, 0.5); }
+    .game-notice.notice-error { border-color: rgba(239, 68, 68, 0.5); }
+    .game-notice-text { font-size: 12px; font-weight: 600; white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -237,6 +250,12 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
         </div>
         <div class="wallet-coin-icon">⭐</div>
       </div>
+    </div>
+
+    <!-- Floating Notice (replaces alert popups) -->
+    <div class="game-notice" id="gameNotice">
+      <span id="gameNoticeIcon">⚠️</span>
+      <span class="game-notice-text" id="gameNoticeText">Notice message</span>
     </div>
 
     <!-- Canvas Stage Area -->
@@ -365,9 +384,33 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
       window.location.href = '/pay?ticket=' + encodeURIComponent(payAccessTicket) + '&amount=500';
     }
 
+    let noticeTimer = null;
+    function showGameNotice(msg, type = 'warning') {
+      const el = document.getElementById('gameNotice');
+      const text = document.getElementById('gameNoticeText');
+      const icon = document.getElementById('gameNoticeIcon');
+      if (!el || !text) return;
+      if (noticeTimer) clearTimeout(noticeTimer);
+      const clean = String(msg || '').replace(/^[⏳⚠️❌✅ℹ️]\s*/, '');
+      text.innerText = clean;
+      const lower = clean.toLowerCase();
+      if (type === 'error' || lower.includes('insufficient') || lower.includes('failed') || lower.includes('error')) {
+        icon.innerText = '⚠️';
+        el.className = 'game-notice notice-error show';
+      } else if (lower.includes('locked') || lower.includes('closed')) {
+        icon.innerText = '⏳';
+        el.className = 'game-notice notice-warning show';
+      } else {
+        icon.innerText = 'ℹ️';
+        el.className = 'game-notice show';
+      }
+      noticeTimer = setTimeout(() => { el.classList.remove('show'); }, 2200);
+    }
+    window.alert = function(msg) { showGameNotice(String(msg || '')); };
+
     async function placeBet(multiplierType) {
       if (currentPhase !== 'BETTING') {
-        alert('Bets are locked for this round!');
+        showGameNotice('Bets are locked for this round!', 'warning');
         return;
       }
 
@@ -385,10 +428,10 @@ gamePageRouter.get('/game/ring-of-future', async (req: Request, res: Response) =
         if (data.success) {
           updateUI(data.data);
         } else {
-          alert(data.message || 'Bet placement failed');
+          showGameNotice(data.message || 'Bet placement failed', 'error');
         }
       } catch (e) {
-        alert('Network error placing bet');
+        showGameNotice('Network error placing bet', 'error');
       }
     }
 
