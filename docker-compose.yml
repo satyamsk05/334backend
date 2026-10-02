@@ -18,6 +18,7 @@ services:
     depends_on:
       - redis
     ports:
+      - "4001:5050"
       - "5050:5050"
     volumes:
       - ./data:/app/data
