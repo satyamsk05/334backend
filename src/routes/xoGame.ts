@@ -87,7 +87,7 @@ router.post('/move', authenticateJwt, async (req: Request, res: Response) => {
 router.post('/end', authenticateJwt, async (req: Request, res: Response) => {
   try {
     const userId = getAuthenticatedUserId(req);
-    const { roomId, tierId } = req.body;
+    const { roomId, tierId, result } = req.body;
 
     if (!userId) {
       return res.status(401).json({ success: false, message: 'Authentication required' });
@@ -97,7 +97,7 @@ router.post('/end', authenticateJwt, async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'roomId is required' });
     }
 
-    const settleRes = await TicTacToeEngine.settleGameResult(userId, roomId, tierId);
+    const settleRes = await TicTacToeEngine.settleGameResult(userId, roomId, tierId, result);
     if (!settleRes.success) {
       return res.status(400).json(settleRes);
     }

@@ -601,6 +601,55 @@ export class TicTacToeEngine {
   ): Promise<{ success: boolean; message?: string; prizePaise?: number; winnerUserId?: string | null; isDraw?: boolean }> {
     const room = this.activeRooms.get(roomId);
     if (!room) {
+      // Support local client rooms (LOCAL-XO-...)
+      if (roomId.startsWith('LOCAL-XO-')) {
+        const tier = XO_STAKE_TIERS.find((t: XOTier) => t.id === _tierId) || XO_STAKE_TIERS[0];
+        if (_clientReportedResult === 'WIN' && tier) {
+          const winRef = `XO-WIN-${Date.now()}-${crypto.randomInt(1000, 9999)}`;
+          const idempKey = `idemp_xo_${roomId}_${userId}`;
+          try {
+            await WalletService.creditWinnings(
+              userId,
+              tier.firstPrizePaise,
+              winRef,
+              `Won 1v1 ${tier.name}`,
+              idempKey,
+              { roomId, tierId: tier.id }
+            );
+          } catch (err: any) {
+            Logger.error('[XO-Engine] Failed crediting local room winnings:', err);
+          }
+          return {
+            success: true,
+            winnerUserId: userId,
+            isDraw: false,
+            prizePaise: tier.firstPrizePaise
+          };
+        } else if (_clientReportedResult === 'DRAW' && tier) {
+          const ref = `XO-REFUND-${Date.now()}-${crypto.randomInt(1000, 9999)}`;
+          const idempKey = `idemp_xo_${roomId}_${userId}`;
+          try {
+            await WalletService.refundEquity(
+              userId,
+              tier.entryPaise,
+              0,
+              0,
+              ref,
+              `Draw Refund for ${tier.name}`,
+              idempKey
+            );
+          } catch (err: any) {
+            Logger.error('[XO-Engine] Failed refunding local room draw:', err);
+          }
+          return {
+            success: true,
+            winnerUserId: null,
+            isDraw: true,
+            prizePaise: tier.entryPaise
+          };
+        }
+        return { success: true, message: 'Game completed', prizePaise: 0, winnerUserId: null, isDraw: false };
+      }
       return { success: false, message: 'Game room not found or already settled' };
     }
 
@@ -617,6 +666,10 @@ export class TicTacToeEngine {
         const winner = winResult.winner === room.player1.symbol ? room.player1.userId : (room.player2?.userId || null);
         await this.endGame(room, winner, false);
       } else if (room.board.every((cell) => cell !== null)) {
+        await this.endGame(room, null, true);
+      } else if (_clientReportedResult === 'WIN') {
+        await this.endGame(room, userId, false);
+      } else if (_clientReportedResult === 'DRAW') {
         await this.endGame(room, null, true);
       } else {
         // Game is still actively in progress - client cannot unilaterally end it
