@@ -955,13 +955,6 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
 
     <!-- Active Full-Width Payment Sheet -->
     <div class="card-upi" id="paymentCard">
-      <div class="bhim-row">
-        <span class="bhim-brand">BHIM</span>
-        <span class="upi-pill">UPI</span>
-      </div>
-      <h2 class="pay-title">PAY VIA UPI</h2>
-      <p class="pay-sub" id="paySubText">Scan QR or pay to satyam</p>
-
       <div class="amount-box">
         <span class="amount-box-label">Amount to Add</span>
         <div class="amount-right">
