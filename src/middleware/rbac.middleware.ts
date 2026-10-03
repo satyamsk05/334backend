@@ -177,7 +177,10 @@ export async function authenticateAdmin(req: Request, res: Response, next: NextF
   }
 
   try {
-    const secret = envConfig.adminJwtSecret || envConfig.jwtSecret;
+    const secret = envConfig.adminJwtSecret || (process.env.NODE_ENV !== 'production' ? envConfig.jwtSecret : '');
+    if (!secret) {
+      return ResponseHandler.error(res, 'Unauthorized: ADMIN_JWT_SECRET is not configured', 500);
+    }
     const decoded = jwt.verify(token, secret) as any;
 
     const adminPrincipal = await resolveAuthoritativeAdmin(decoded);

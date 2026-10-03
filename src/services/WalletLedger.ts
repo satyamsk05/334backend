@@ -24,7 +24,7 @@ export class WalletLedger {
    * Request withdrawal debited from winnings balance in PostgreSQL.
    */
   public static async requestWithdrawal(userId: string, amountPaise: number, upiId: string): Promise<{ success: boolean; message: string; newBalance?: WalletBalance }> {
-    const withdrawalId = `WD-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+    const withdrawalId = `WDR-${crypto.randomUUID()}`;
     return await WalletService.debitWithdrawal(userId, amountPaise, withdrawalId, upiId);
   }
 
@@ -33,20 +33,5 @@ export class WalletLedger {
    */
   public static async getTransactions(userId: string): Promise<WalletTransaction[]> {
     return await WalletService.getTransactions(userId);
-  }
-
-  /**
-   * Legacy shim for backward compatibility (delegates to WalletService ledger).
-   */
-  public static async recordTransaction(
-    userId: string,
-    type: string,
-    amountPaise: number,
-    balanceAfter: number,
-    refId: string,
-    desc: string
-  ): Promise<void> {
-    // Operations should now be recorded via transactional WalletService methods.
-    // This shim exists for legacy callers.
   }
 }

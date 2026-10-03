@@ -110,6 +110,49 @@ export class RedisManager {
     RedisManager.fallbackMap.delete(key);
   }
 
+  public static async incr(key: string): Promise<number> {
+    if (RedisManager.isReady()) {
+      try {
+        return await RedisManager.client!.incr(key);
+      } catch (e) {
+        // Fallback
+      }
+    }
+    const current = parseInt(RedisManager.fallbackMap.get(key) || '0', 10);
+    const nextVal = (isNaN(current) ? 0 : current) + 1;
+    RedisManager.fallbackMap.set(key, nextVal.toString());
+    return nextVal;
+  }
+
+  public static async expire(key: string, ttlSeconds: number): Promise<boolean> {
+    if (RedisManager.isReady()) {
+      try {
+        const res = await RedisManager.client!.expire(key, ttlSeconds);
+        return res === 1;
+      } catch (e) {
+        // Fallback
+      }
+    }
+    if (RedisManager.fallbackMap.has(key)) {
+      setTimeout(() => {
+        RedisManager.fallbackMap.delete(key);
+      }, ttlSeconds * 1000).unref();
+      return true;
+    }
+    return false;
+  }
+
+  public static async ttl(key: string): Promise<number> {
+    if (RedisManager.isReady()) {
+      try {
+        return await RedisManager.client!.ttl(key);
+      } catch (e) {
+        // Fallback
+      }
+    }
+    return -1;
+  }
+
   public static async publish(channel: string, message: string): Promise<void> {
     if (RedisManager.isReady()) {
       try {

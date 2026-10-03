@@ -1,44 +1,39 @@
 import { Request, Response, NextFunction } from 'express';
+import { RedisManager } from '../db/redis';
 
-interface Bucket {
-  count: number;
-  resetAt: number;
-}
+/**
+ * Distributed Redis-backed Rate Limiter with memory fallback.
+ * Works uniformly across PM2 clusters, Docker containers, and multi-instance deployments.
+ */
+export function createRateLimiter(windowMs: number, maxRequests: number, prefix: string = 'rl') {
+  const windowSec = Math.max(1, Math.ceil(windowMs / 1000));
 
-export function createRateLimiter(windowMs: number, maxRequests: number) {
-  const buckets = new Map<string, Bucket>();
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const ip = (req.ip || req.socket.remoteAddress || 'unknown').trim();
+      const key = `${prefix}:${ip}`;
 
-  const cleanupTimer = setInterval(() => {
-    const now = Date.now();
-    for (const [key, bucket] of buckets) {
-      if (bucket.resetAt <= now) buckets.delete(key);
-    }
-  }, Math.max(windowMs, 60_000));
-  cleanupTimer.unref();
+      const count = await RedisManager.incr(key);
+      if (count === 1) {
+        await RedisManager.expire(key, windowSec);
+      }
 
-  return (req: Request, res: Response, next: NextFunction): void => {
-    const key = (req.ip || req.socket.remoteAddress || 'unknown').trim();
-    const now = Date.now();
-    const current = buckets.get(key);
-
-    if (!current || current.resetAt <= now) {
-      buckets.set(key, { count: 1, resetAt: now + windowMs });
       res.setHeader('X-RateLimit-Limit', maxRequests);
-      res.setHeader('X-RateLimit-Remaining', maxRequests - 1);
-      return next();
-    }
+      res.setHeader('X-RateLimit-Remaining', Math.max(0, maxRequests - count));
 
-    if (current.count >= maxRequests) {
-      const retryAfter = Math.max(1, Math.ceil((current.resetAt - now) / 1000));
-      res.setHeader('Retry-After', retryAfter);
-      res.status(429).json({ error: 'Too many requests. Please try again later.' });
-      return;
-    }
+      if (count > maxRequests) {
+        let ttl = await RedisManager.ttl(key);
+        if (ttl <= 0) ttl = windowSec;
+        res.setHeader('Retry-After', ttl);
+        res.status(429).json({ error: 'Too many requests. Please try again later.' });
+        return;
+      }
 
-    current.count += 1;
-    res.setHeader('X-RateLimit-Limit', maxRequests);
-    res.setHeader('X-RateLimit-Remaining', Math.max(0, maxRequests - current.count));
-    next();
+      next();
+    } catch {
+      // In case of any rate limiting error, fail-open to preserve API availability
+      next();
+    }
   };
 }
 
@@ -47,4 +42,4 @@ export function createRateLimiter(windowMs: number, maxRequests: number) {
  * Max 5 attempts per IP per 15 minutes.
  * Significantly stricter than the general authRateLimit (20 req/min).
  */
-export const adminLoginRateLimit = createRateLimiter(15 * 60_000, 5);
+export const adminLoginRateLimit = createRateLimiter(15 * 60_000, 5, 'rl:admin_login');

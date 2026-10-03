@@ -33,18 +33,19 @@ export class SocketServer {
         ? authHeader.slice('Bearer '.length).trim()
         : '';
 
-      if (!token && req.url) {
+      if (!token && req.url && process.env.NODE_ENV !== 'production') {
         try {
           const parsedUrl = new URL(req.url, 'http://localhost');
           const queryToken = parsedUrl.searchParams.get('token');
           if (queryToken) {
             token = queryToken.trim();
+            Logger.warn('[SOCKET] Passing JWT in query string is deprecated and allowed in development only.');
           }
         } catch {}
       }
 
       if (!token) {
-        ws.close(1008, 'Authentication required');
+        ws.close(1008, 'Authentication required – use Authorization header');
         return;
       }
 

@@ -25,8 +25,13 @@ const globalRateLimit = createRateLimiter(60_000, 120);
 const authRateLimit = createRateLimiter(60_000, 20);
 
 export function isAllowedCorsOrigin(origin: string | undefined): boolean {
-  // Allow native mobile apps, postman/curl, server-to-server without origin header, or local file asset webviews
-  if (!origin || origin === 'null' || origin === 'file://') return true;
+  // Allow native mobile apps, postman/curl, server-to-server without origin header
+  if (!origin) return true;
+
+  // In non-production environments, allow null and file:// origins for local webviews and unit tests
+  if (process.env.NODE_ENV !== 'production' && (origin === 'null' || origin === 'file://')) {
+    return true;
+  }
 
   try {
     const url = new URL(origin);

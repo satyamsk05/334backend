@@ -321,8 +321,11 @@ export class AuthService {
 
           if (storedHash.startsWith('$2a$') || storedHash.startsWith('$2b$')) {
             isPasswordValid = await bcrypt.compare(cleanPassword, storedHash);
+          } else if (process.env.NODE_ENV === 'production') {
+            Logger.error(`[AUTH] Non-bcrypt password hash detected for admin ${adminRow.username} in production. Login rejected.`);
+            throw new Error('Invalid Admin Username or Password');
           } else {
-            // Upgrade legacy SHA-256 hash to bcrypt; reject plaintext
+            // Upgrade legacy SHA-256 hash to bcrypt; reject plaintext (dev only)
             const sha256Pass = crypto.createHash('sha256').update(cleanPassword).digest('hex');
             if (storedHash.length === sha256Pass.length && crypto.timingSafeEqual(Buffer.from(storedHash), Buffer.from(sha256Pass))) {
               isPasswordValid = true;
@@ -335,7 +338,7 @@ export class AuthService {
             await pool.query('UPDATE admins SET last_login_at = CURRENT_TIMESTAMP WHERE id = $1', [adminRow.id]);
             const token = jwt.sign(
               { id: adminRow.id, username: adminRow.username, role: adminRow.role || 'ADMIN' },
-              envConfig.adminJwtSecret || envConfig.jwtSecret,
+              envConfig.adminJwtSecret || (process.env.NODE_ENV !== 'production' ? envConfig.jwtSecret : ''),
               { expiresIn: '1d' }
             );
             Logger.info(`[AUTH] Admin login successful for DB admin: ${adminRow.username} (Role: ${adminRow.role})`);
@@ -356,6 +359,9 @@ export class AuthService {
       let isEnvPassValid = false;
       if (adminPass.startsWith('$2a$') || adminPass.startsWith('$2b$')) {
         isEnvPassValid = await bcrypt.compare(cleanPassword, adminPass);
+      } else if (process.env.NODE_ENV === 'production') {
+        Logger.error('[AUTH] ADMIN_PASSWORD must be a bcrypt hash in production.');
+        isEnvPassValid = false;
       } else {
         const passBuf = crypto.createHash('sha256').update(cleanPassword).digest();
         const expectedBuf = crypto.createHash('sha256').update(adminPass).digest();

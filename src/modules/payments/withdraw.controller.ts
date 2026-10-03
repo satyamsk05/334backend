@@ -9,9 +9,12 @@ export class WithdrawController {
     if (!validation.valid) {
       return ResponseHandler.error(res, validation.message || 'Invalid withdrawal parameters', 400);
     }
-    const authenticatedUserId = (req as any).user?.userId;
+    const authenticatedUserId = (req as any).user?.userId || (req as any).user?.id;
     if (!authenticatedUserId) {
       return ResponseHandler.error(res, 'Unauthorized: Valid user token required', 401);
+    }
+    if (req.body?.userId && req.body.userId !== authenticatedUserId) {
+      return ResponseHandler.error(res, 'Forbidden: Cannot request withdrawal for another user', 403);
     }
     const { amountRupees, upiId } = req.body;
     const result = await PaymentService.requestWithdrawal(authenticatedUserId, amountRupees, upiId);

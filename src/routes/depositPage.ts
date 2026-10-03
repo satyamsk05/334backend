@@ -134,17 +134,51 @@ depositPageRouter.get('/api/v1/deposits/status', (req: Request, res: Response) =
   });
 });
 
-// UTR Submission API (Requires valid JWT authentication)
-depositPageRouter.post('/api/v1/deposits/submit-utr', authenticateJwt, (req: Request, res: Response) => {
+// UTR Submission API (Supports JWT Bearer, X-Page-Ticket, X-Auth-Token, and body/query ticket/token)
+depositPageRouter.post('/api/v1/deposits/submit-utr', async (req: Request, res: Response) => {
   try {
-    const authenticatedUserId = (req as any).user?.userId || (req as any).user?.id;
-    if (!authenticatedUserId) {
-      return res.status(401).json({ success: false, message: 'Authentication required' });
-    }
-
     const { depositId, utr, userId, amountRupees } = req.body;
     if (!depositId) {
       return res.status(400).json({ success: false, message: 'Deposit ID is required' });
+    }
+
+    if (!utr || typeof utr !== 'string' || utr.trim().length < 6) {
+      return res.status(400).json({ success: false, message: 'Please enter a valid 12-digit UTR / Ref No.' });
+    }
+
+    // 1. Check Bearer Authorization header
+    let authenticatedUserId = resolveBearerUserId(req);
+
+    // 2. Check X-Page-Ticket header, body.ticket, query.ticket
+    if (!authenticatedUserId) {
+      const ticketParam = (req.headers['x-page-ticket'] as string) || (req.body?.ticket as string) || (req.query?.ticket as string) || '';
+      if (ticketParam) {
+        try {
+          const ticketPayload = await PageAccessTicket.resolve(ticketParam, 'pay');
+          if (ticketPayload?.userId) {
+            authenticatedUserId = ticketPayload.userId;
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    // 3. Check X-Auth-Token header, body.token, query.token
+    if (!authenticatedUserId) {
+      const tokenParam = (req.headers['x-auth-token'] as string) || (req.body?.token as string) || (req.query?.token as string) || '';
+      if (tokenParam) {
+        try {
+          const decoded: any = jwt.verify(tokenParam, envConfig.jwtSecret);
+          authenticatedUserId = decoded.userId || decoded.id || '';
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    if (!authenticatedUserId) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
     if (userId && userId !== authenticatedUserId) {
@@ -161,7 +195,7 @@ depositPageRouter.post('/api/v1/deposits/submit-utr', authenticateJwt, (req: Req
     }
 
     const parsedAmount = amountRupees ? parseFloat(amountRupees) : undefined;
-    const result = FinancialService.submitUtr(depositId, utr, authenticatedUserId, parsedAmount);
+    const result = FinancialService.submitUtr(depositId, utr.trim(), authenticatedUserId, parsedAmount);
     if (!result.success) {
       return res.status(400).json(result);
     }
@@ -176,19 +210,17 @@ depositPageRouter.post('/api/v1/deposits/submit-utr', authenticateJwt, (req: Req
 // Auto-UPI Payment Webpage — requires short-lived ?ticket=, verified ?token=, or Authorization Bearer JWT
 depositPageRouter.get('/pay', async (req: Request, res: Response) => {
   const ticketParam = typeof req.query.ticket === 'string' ? req.query.ticket : '';
+  const tokenParam = typeof req.query.token === 'string' ? req.query.token : '';
   const ticketPayload = await PageAccessTicket.resolve(ticketParam, 'pay');
   let authenticatedUserId = ticketPayload?.userId || resolveBearerUserId(req);
 
   // Fallback: verify token JWT param if ticket / bearer header wasn't present
-  if (!authenticatedUserId) {
-    const tokenParam = typeof req.query.token === 'string' ? req.query.token : '';
-    if (tokenParam) {
-      try {
-        const decoded: any = jwt.verify(tokenParam, envConfig.jwtSecret);
-        authenticatedUserId = decoded.userId || decoded.id || '';
-      } catch {
-        // invalid token
-      }
+  if (!authenticatedUserId && tokenParam) {
+    try {
+      const decoded: any = jwt.verify(tokenParam, envConfig.jwtSecret);
+      authenticatedUserId = decoded.userId || decoded.id || '';
+    } catch {
+      // invalid token
     }
   }
 
@@ -1246,6 +1278,7 @@ function circ(q, n, c, options) {
 
     let orderId = "${orderId}";
     let ticket = "${ticketParam}";
+    let token = "${tokenParam}" || urlParams.get('token') || '';
     let merchantUpi = "${MERCHANT_UPI_ID}";
     let merchantName = "${MERCHANT_NAME}";
     let userId = "${userId}";
@@ -1543,13 +1576,17 @@ function circ(q, n, c, options) {
       btn.innerHTML = 'Verifying...';
 
       try {
-        const payload = { depositId: orderId, utr: utr, amountRupees: amount, userId: userId };
+        const payload = { depositId: orderId, utr: utr, amountRupees: amount, userId: userId, ticket: ticket, token: token };
+        const headers = { 'Content-Type': 'application/json' };
+        if (ticket) headers['X-Page-Ticket'] = ticket;
+        if (token) {
+          headers['Authorization'] = 'Bearer ' + token;
+          headers['X-Auth-Token'] = token;
+        }
+
         const res = await fetch('/api/v1/deposits/submit-utr', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(ticket ? { 'X-Page-Ticket': ticket } : {})
-          },
+          headers: headers,
           body: JSON.stringify(payload)
         });
 
@@ -1557,10 +1594,10 @@ function circ(q, n, c, options) {
         if (data && data.success) {
           showAlert('UTR Submitted! Verifying approval with Admin...', false);
         } else {
-          showAlert(data.message || 'Payment submitted! Verifying...', false);
+          showAlert(data.message || 'Payment submission failed. Please try again.', true);
         }
       } catch (err) {
-        showAlert('UTR Submitted! Verifying approval with Admin...', false);
+        showAlert('Payment submitted! Verifying approval with Admin...', false);
       } finally {
         checkUtrInput();
         btn.innerHTML = '<span>SUBMIT</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>';

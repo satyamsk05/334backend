@@ -10,6 +10,15 @@ import { FinancialService } from './services/FinancialService';
 import { AdminSchema } from './database/adminSchema';
 import { Logger } from './utils/logger';
 
+process.on('unhandledRejection', (reason: any) => {
+  Logger.error(`[PROCESS] Unhandled Rejection: ${reason instanceof Error ? reason.stack || reason.message : String(reason)}`);
+});
+
+process.on('uncaughtException', (error: Error) => {
+  Logger.error(`[PROCESS] Uncaught Exception: ${error.stack || error.message}`);
+  process.exit(1);
+});
+
 async function bootstrap() {
   const app = createApp();
   const server = http.createServer(app);
