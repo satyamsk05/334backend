@@ -340,7 +340,7 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
     html, body {
       width: 100%;
       min-height: 100%;
-      background: #0E0720;
+      background: #FFFFFF;
     }
     body {
       color: #111827;
@@ -357,38 +357,39 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
       width: 100%;
       max-width: 480px;
       min-height: 100vh;
-      background: #0E0720;
+      background: #FFFFFF;
       display: flex;
       flex-direction: column;
       position: relative;
     }
 
-    /* Top Header with Back, Title & 10-Min Timer */
+    /* Clean White Top Header with Back, Title & 10-Min Timer */
     .top-header {
       width: 100%;
       display: flex;
       align-items: center;
       justify-content: space-between;
       position: relative;
-      padding: 16px 18px 18px 18px;
-      background: #0E0720;
+      padding: 16px 18px 14px 18px;
+      background: #FFFFFF;
+      border-bottom: 1px solid #F1F5F9;
     }
     .back-btn {
       width: 38px;
       height: 38px;
       border-radius: 50%;
-      background: #1C1236;
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #FFFFFF;
+      color: #1E293B;
       cursor: pointer;
       flex-shrink: 0;
       transition: background 0.2s;
     }
     .back-btn:active {
-      background: #2E1F55;
+      background: #E2E8F0;
     }
     .header-text {
       flex: 1;
@@ -398,12 +399,12 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
     .header-title {
       font-size: 19px;
       font-weight: 800;
-      color: #FFFFFF;
+      color: #0F172A;
       letter-spacing: -0.3px;
     }
     .header-subtitle {
       font-size: 12px;
-      color: #A195BE;
+      color: #64748B;
       margin-top: 1px;
       font-weight: 500;
     }
@@ -412,10 +413,10 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
       align-items: center;
       gap: 5px;
       padding: 6px 11px;
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: #F8FAFC;
+      border: 1.5px solid #E2E8F0;
       border-radius: 20px;
-      color: #F1F5F9;
+      color: #0F172A;
       font-size: 13px;
       font-weight: 700;
       font-variant-numeric: tabular-nums;
@@ -423,9 +424,9 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
       transition: all 0.3s;
     }
     .timer-badge.warning {
-      background: rgba(239, 68, 68, 0.18);
-      border-color: rgba(239, 68, 68, 0.45);
-      color: #FCA5A5;
+      background: #FEF2F2;
+      border-color: #FCA5A5;
+      color: #DC2626;
       animation: pulse 1s infinite alternate;
     }
 
@@ -434,11 +435,11 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
       background: #FFFFFF;
       width: 100%;
       flex: 1;
-      border-radius: 28px 28px 0 0;
-      padding: 24px 20px 48px 20px;
+      border-radius: 0;
+      padding: 20px 20px 48px 20px;
       color: #111827;
       position: relative;
-      box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.3);
+      box-shadow: none;
       display: flex;
       flex-direction: column;
     }
@@ -709,7 +710,7 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
       background: #FFFFFF;
       width: 100%;
       flex: 1;
-      border-radius: 28px 28px 0 0;
+      border-radius: 0;
       padding: 36px 20px 48px 20px;
       text-align: center;
       animation: popIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
@@ -764,7 +765,7 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
     }
     .btn-retry {
       width: 100%;
-      background: #0E0720;
+      background: #0F172A;
       color: #FFFFFF;
       border: none;
       border-radius: 14px;
@@ -776,7 +777,7 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
       transition: background 0.2s;
     }
     .btn-retry:active {
-      background: #1C1236;
+      background: #1E293B;
     }
 
     /* Beautiful Celebration Success Screen */
@@ -785,7 +786,7 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
       background: #FFFFFF;
       width: 100%;
       flex: 1;
-      border-radius: 28px 28px 0 0;
+      border-radius: 0;
       overflow: hidden;
       text-align: center;
       animation: popIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -898,7 +899,7 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
     }
     .btn-return {
       width: 100%;
-      background: #0E0720;
+      background: #0F172A;
       color: #FFFFFF;
       border: none;
       border-radius: 14px;
@@ -910,7 +911,7 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
       align-items: center;
       justify-content: center;
       gap: 8px;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
     }
     @keyframes popIn {
       from { transform: scale(0.95); opacity: 0; }
