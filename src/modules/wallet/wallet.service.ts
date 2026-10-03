@@ -523,36 +523,89 @@ export class WalletService {
         [dep, win, bon, balanceAfter, userId]
       );
 
-      const ledgerId = WalletService.generateLedgerId();
-      await client.query(
-        `INSERT INTO wallet_ledger (
-           id, user_id, wallet_id, type, amount, direction, reference_type,
-           reference_id, balance_before, balance_after, status, idempotency_key,
-           metadata, created_at
-         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)`,
-        [
-          ledgerId,
-          userId,
-          row.id,
-          'BET_DEBIT',
-          amountPaise,
-          'DEBIT',
-          'GAME_BET',
-          referenceId,
-          totalAvailable,
-          balanceAfter,
-          'COMPLETED',
-          idempKey,
-          JSON.stringify({
-            depositDebited,
-            winningDebited,
-            bonusDebited,
-            description,
-            ...extraMetadata
-          })
-        ]
-      );
+      const roundId = extraMetadata?.roundId;
+      const targetRefId = roundId ? `BET-${roundId}-${userId}` : referenceId;
+
+      let existingLedgerRow: any = null;
+      if (roundId) {
+        const checkRes = await client.query(
+          `SELECT id, amount, balance_before, metadata FROM wallet_ledger
+           WHERE user_id = $1 AND reference_id = $2 AND type = 'BET_DEBIT'
+           ORDER BY created_at ASC LIMIT 1`,
+          [userId, targetRefId]
+        );
+        if (checkRes.rows.length > 0) {
+          existingLedgerRow = checkRes.rows[0];
+        }
+      }
+
+      if (existingLedgerRow) {
+        const currentMeta = typeof existingLedgerRow.metadata === 'string'
+          ? JSON.parse(existingLedgerRow.metadata)
+          : (existingLedgerRow.metadata || {});
+
+        const newAmount = Number(existingLedgerRow.amount) + amountPaise;
+        const processedKeys = Array.isArray(currentMeta.processedIdempKeys)
+          ? currentMeta.processedIdempKeys
+          : [existingLedgerRow.idempotency_key || ''];
+        if (!processedKeys.includes(idempKey)) {
+          processedKeys.push(idempKey);
+        }
+
+        const updatedMeta = {
+          ...currentMeta,
+          depositDebited: (currentMeta.depositDebited || 0) + depositDebited,
+          winningDebited: (currentMeta.winningDebited || 0) + winningDebited,
+          bonusDebited: (currentMeta.bonusDebited || 0) + bonusDebited,
+          betCount: (currentMeta.betCount || 1) + 1,
+          processedIdempKeys: processedKeys,
+          description: description || currentMeta.description || 'Entry Fee : Ring of Future',
+          ...extraMetadata
+        };
+
+        await client.query(
+          `UPDATE wallet_ledger
+           SET amount = $1,
+               balance_after = $2,
+               metadata = $3,
+               created_at = CURRENT_TIMESTAMP
+           WHERE id = $4`,
+          [newAmount, balanceAfter, JSON.stringify(updatedMeta), existingLedgerRow.id]
+        );
+      } else {
+        const ledgerId = WalletService.generateLedgerId();
+        await client.query(
+          `INSERT INTO wallet_ledger (
+             id, user_id, wallet_id, type, amount, direction, reference_type,
+             reference_id, balance_before, balance_after, status, idempotency_key,
+             metadata, created_at
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_TIMESTAMP)`,
+          [
+            ledgerId,
+            userId,
+            row.id,
+            'BET_DEBIT',
+            amountPaise,
+            'DEBIT',
+            'GAME_BET',
+            targetRefId,
+            totalAvailable,
+            balanceAfter,
+            'COMPLETED',
+            idempKey,
+            JSON.stringify({
+              depositDebited,
+              winningDebited,
+              bonusDebited,
+              description,
+              betCount: 1,
+              processedIdempKeys: [idempKey],
+              ...extraMetadata
+            })
+          ]
+        );
+      }
 
       await client.query('COMMIT');
 
@@ -899,17 +952,19 @@ export class WalletService {
    */
   public static async getTransactions(userId: string, limit: number = 50): Promise<Transaction[]> {
     const pool = WalletService.getPool();
+    const fetchLimit = Math.max(limit * 3, 100);
     const res = await pool.query(
       `SELECT id, user_id, type, amount, balance_after, status, reference_id, metadata, created_at
        FROM wallet_ledger
        WHERE user_id = $1
        ORDER BY created_at DESC
        LIMIT $2`,
-      [userId, limit]
+      [userId, fetchLimit]
     );
 
-    return res.rows.map((r: any) => {
+    const rawList = res.rows.map((r: any) => {
       const meta = typeof r.metadata === 'string' ? JSON.parse(r.metadata) : (r.metadata || {});
+      const roundId = meta.roundId || (typeof r.reference_id === 'string' && r.reference_id.startsWith('BET-ROF-') ? r.reference_id.split('-').slice(0, 3).join('-') : null);
       return {
         id: r.id,
         userId: r.user_id,
@@ -919,8 +974,37 @@ export class WalletService {
         status: (r.status === 'COMPLETED' ? 'SUCCESS' : r.status) as any,
         referenceId: r.reference_id || r.id,
         description: meta.description || `${r.type} transaction`,
-        timestamp: new Date(r.created_at).getTime()
+        timestamp: new Date(r.created_at).getTime(),
+        _roundId: roundId
       };
     });
+
+    const consolidated: Transaction[] = [];
+    const seenRounds = new Map<string, number>();
+
+    for (const item of rawList) {
+      const isBet = item.type === 'BET' || item.type === 'BET_DEBIT';
+      const roundKey = item._roundId;
+
+      if (isBet && roundKey) {
+        if (seenRounds.has(roundKey)) {
+          const idx = seenRounds.get(roundKey)!;
+          consolidated[idx].amountPaise += item.amountPaise;
+        } else {
+          seenRounds.set(roundKey, consolidated.length);
+          const { _roundId, ...cleanTx } = item;
+          consolidated.push(cleanTx);
+        }
+      } else {
+        const { _roundId, ...cleanTx } = item;
+        consolidated.push(cleanTx);
+      }
+
+      if (consolidated.length >= limit) {
+        break;
+      }
+    }
+
+    return consolidated;
   }
 }

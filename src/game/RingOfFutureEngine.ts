@@ -169,14 +169,14 @@ export class RingOfFutureEngine {
     }
 
     const roundId = `ROF-${RingOfFutureEngine.getRoundCount()}`;
-    const betRefId = `BET-${roundId}-${userId}-${Date.now()}`;
+    const betRefId = `BET-${roundId}-${userId}`;
     const idempKey = `idemp_bet_${roundId}_${userId}_${targetType}_${Date.now()}`;
 
     const debitRes = await WalletService.debitBet(
       userId,
       amountPaise,
       betRefId,
-      `Bet placed on ${targetType} (Round #${RingOfFutureEngine.getRoundCount()})`,
+      `Entry Fee : Ring of Future (Round #${RingOfFutureEngine.getRoundCount()})`,
       idempKey,
       { roundId, targetType }
     );
