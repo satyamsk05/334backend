@@ -500,32 +500,11 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
       font-weight: 600;
       color: #4B5563;
     }
-    .amount-right {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
     .amount-val {
       font-size: 22px;
       font-weight: 800;
       color: #0F172A;
       letter-spacing: -0.5px;
-    }
-    .edit-btn {
-      width: 32px;
-      height: 32px;
-      border-radius: 8px;
-      background: #EEF2F6;
-      border: 1px solid #CBD5E1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      color: #475569;
-      transition: background 0.15s;
-    }
-    .edit-btn:active {
-      background: #E2E8F0;
     }
 
     .qr-container {
@@ -1028,15 +1007,7 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
     <div class="card-upi" id="paymentCard">
       <div class="amount-box">
         <span class="amount-box-label">Amount to Add</span>
-        <div class="amount-right">
-          <span class="amount-val" id="displayAmount">₹${finalAmount.toFixed(2)}</span>
-          <button class="edit-btn" onclick="promptEditAmount()" title="Edit amount">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 20h9"></path>
-              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-            </svg>
-          </button>
-        </div>
+        <span class="amount-val" id="displayAmount">₹${finalAmount.toFixed(2)}</span>
       </div>
 
       <div class="qr-container" id="qrBox"></div>
@@ -1492,18 +1463,6 @@ function circ(q, n, c, options) {
       }
     }
 
-    function promptEditAmount() {
-      const input = prompt('Enter deposit amount (₹):', amount.toString());
-      if (input !== null) {
-        const parsed = parseFloat(input.trim());
-        if (!isNaN(parsed) && parsed >= 1 && parsed <= 50000) {
-          amount = parsed;
-          renderCircularQr();
-        } else {
-          alert('Please enter a valid amount between ₹1 and ₹50,000');
-        }
-      }
-    }
 
     function openUpiApp(app) {
       const baseUri = generateUpiUri(amount);
