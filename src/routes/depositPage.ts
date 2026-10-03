@@ -650,28 +650,39 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
     }
     .btn-submit {
       width: 100%;
-      background: #00C853 linear-gradient(180deg, #10B981 0%, #059669 100%);
-      color: #FFFFFF;
+      background: #E2E8F0;
+      color: #94A3B8;
       border: none;
       border-radius: 14px;
       padding: 15px;
       font-size: 15px;
       font-weight: 800;
       letter-spacing: 0.5px;
-      cursor: pointer;
+      cursor: not-allowed;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
-      box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
-      transition: transform 0.15s, opacity 0.15s;
+      box-shadow: none;
+      transition: all 0.25s ease;
+      pointer-events: none;
     }
-    .btn-submit:active {
+    .btn-submit.active {
+      background: #00C853 linear-gradient(180deg, #10B981 0%, #059669 100%);
+      color: #FFFFFF;
+      cursor: pointer;
+      box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
+      pointer-events: auto;
+    }
+    .btn-submit.active:active {
       transform: scale(0.98);
     }
-    .btn-submit:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
+    .btn-submit:disabled:not(.active) {
+      background: #E2E8F0 !important;
+      color: #94A3B8 !important;
+      cursor: not-allowed !important;
+      box-shadow: none !important;
+      pointer-events: none !important;
     }
 
     .verify-note {
@@ -680,6 +691,66 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
       color: #6B7280;
       font-weight: 500;
       line-height: 1.4;
+      margin-bottom: 8px;
+    }
+
+    /* Tips & Instructions Section */
+    .instructions-section {
+      margin-top: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      text-align: left;
+    }
+    .tip-card {
+      background: #F8FAFC;
+      border: 1px solid #E2E8F0;
+      border-radius: 14px;
+      padding: 14px 16px;
+    }
+    .tip-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13.5px;
+      font-weight: 800;
+      color: #1E293B;
+      margin-bottom: 6px;
+    }
+    .tip-desc {
+      font-size: 12.5px;
+      color: #475569;
+      line-height: 1.5;
+      margin-bottom: 8px;
+    }
+    .info-list {
+      padding-left: 20px;
+      font-size: 12.5px;
+      color: #475569;
+      line-height: 1.6;
+      margin: 0;
+    }
+    .warning-item {
+      color: #DC2626 !important;
+      font-weight: 700;
+    }
+    .notice-card {
+      background: #FEF2F2;
+      border: 1px solid #FECACA;
+      border-radius: 14px;
+      padding: 14px 16px;
+    }
+    .notice-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13.5px;
+      font-weight: 800;
+      color: #DC2626;
+      margin-bottom: 6px;
+    }
+    .notice-list {
+      color: #991B1B;
     }
 
     .status-alert {
@@ -1005,13 +1076,38 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
         <label class="utr-label" for="utrInput">ENTER 12-DIGIT UTR / REF NO.</label>
         <input type="text" class="utr-input" id="utrInput" placeholder="e.g. 426819203814" maxlength="16" autocomplete="off" autocorrect="off">
         <div class="status-alert" id="statusAlert"></div>
-        <button class="btn-submit" id="submitBtn" onclick="submitUtr()">
-          <span>SUBMIT PAYMENT</span>
+        <button class="btn-submit" id="submitBtn" onclick="submitUtr()" disabled>
+          <span>SUBMIT</span>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
         </button>
       </div>
 
       <p class="verify-note">Payment will be credited automatically after verification</p>
+
+      <!-- Tips & Instructions Section -->
+      <div class="instructions-section">
+        <div class="tip-card">
+          <div class="tip-header">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+            <span>Tip:</span>
+          </div>
+          <p class="tip-desc">Open your UPI wallet and complete the transfer Record your reference No.(Ref No.) after payment.</p>
+          <ol class="info-list">
+            <li>Please make sure you have installed the app</li>
+            <li class="warning-item">Don't pay for the same link repeatedly</li>
+          </ol>
+        </div>
+
+        <div class="notice-card">
+          <div class="notice-header">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            <span>Notice:</span>
+          </div>
+          <ol class="info-list notice-list">
+            <li>Please select the payment method you need and make sure your phone has the corresponding wallet software installed.</li>
+          </ol>
+        </div>
+      </div>
     </div>
 
     <!-- 10-Minute Expired Order View (Complete Page Replacement) -->
@@ -1436,9 +1532,30 @@ function circ(q, n, c, options) {
       el.innerText = msg;
     }
 
+    const utrInput = document.getElementById('utrInput');
+    const submitBtn = document.getElementById('submitBtn');
+
+    function checkUtrInput() {
+      if (!utrInput || !submitBtn) return;
+      const val = (utrInput.value || '').trim();
+      if (val.length >= 12) {
+        submitBtn.disabled = false;
+        submitBtn.classList.add('active');
+      } else {
+        submitBtn.disabled = true;
+        submitBtn.classList.remove('active');
+      }
+    }
+
+    if (utrInput) {
+      utrInput.addEventListener('input', checkUtrInput);
+      utrInput.addEventListener('keyup', checkUtrInput);
+      utrInput.addEventListener('paste', () => setTimeout(checkUtrInput, 50));
+    }
+
     async function submitUtr() {
       const utr = document.getElementById('utrInput').value.trim();
-      if (!utr || utr.length < 8) {
+      if (!utr || utr.length < 12) {
         showAlert('Please enter valid 12-digit UTR / Ref No.', true);
         return;
       }
@@ -1467,8 +1584,8 @@ function circ(q, n, c, options) {
       } catch (err) {
         showAlert('UTR Submitted! Verifying approval with Admin...', false);
       } finally {
-        btn.disabled = false;
-        btn.innerHTML = '<span>SUBMIT PAYMENT</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>';
+        checkUtrInput();
+        btn.innerHTML = '<span>SUBMIT</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>';
       }
     }
 
@@ -1476,6 +1593,7 @@ function circ(q, n, c, options) {
     renderCircularQr();
     start10MinCountdown();
     startAdminApprovalPolling();
+    checkUtrInput();
 
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', renderCircularQr);
