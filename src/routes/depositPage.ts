@@ -363,17 +363,19 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
       position: relative;
     }
 
+    /* Top Header with Back, Title & 10-Min Timer */
     .top-header {
       width: 100%;
       display: flex;
       align-items: center;
+      justify-content: space-between;
       position: relative;
-      padding: 18px 20px 20px 20px;
+      padding: 16px 18px 18px 18px;
       background: #0E0720;
     }
     .back-btn {
-      width: 40px;
-      height: 40px;
+      width: 38px;
+      height: 38px;
       border-radius: 50%;
       background: #1C1236;
       border: 1px solid rgba(255, 255, 255, 0.12);
@@ -382,32 +384,52 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
       justify-content: center;
       color: #FFFFFF;
       cursor: pointer;
-      position: absolute;
-      left: 20px;
-      top: 50%;
-      transform: translateY(-50%);
+      flex-shrink: 0;
       transition: background 0.2s;
     }
     .back-btn:active {
       background: #2E1F55;
     }
     .header-text {
-      width: 100%;
+      flex: 1;
       text-align: center;
+      padding: 0 10px;
     }
     .header-title {
-      font-size: 20px;
+      font-size: 19px;
       font-weight: 800;
       color: #FFFFFF;
       letter-spacing: -0.3px;
     }
     .header-subtitle {
-      font-size: 13px;
+      font-size: 12px;
       color: #A195BE;
-      margin-top: 2px;
+      margin-top: 1px;
       font-weight: 500;
     }
+    .timer-badge {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 6px 11px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 20px;
+      color: #F1F5F9;
+      font-size: 13px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
+      transition: all 0.3s;
+    }
+    .timer-badge.warning {
+      background: rgba(239, 68, 68, 0.18);
+      border-color: rgba(239, 68, 68, 0.45);
+      color: #FCA5A5;
+      animation: pulse 1s infinite alternate;
+    }
 
+    /* Main Full-Width Payment Sheet */
     .card-upi {
       background: #FFFFFF;
       width: 100%;
@@ -681,73 +703,66 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
       display: block;
     }
 
-    .card-success {
+    /* Complete Expired Order Screen */
+    .card-expired {
       display: none;
       background: #FFFFFF;
       width: 100%;
       flex: 1;
       border-radius: 28px 28px 0 0;
-      overflow: hidden;
+      padding: 36px 20px 48px 20px;
       text-align: center;
       animation: popIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
     }
-    .card-success.active {
-      display: block;
+    .card-expired.active {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
-    .success-hero {
-      background: linear-gradient(180deg, #059669 0%, #10B981 100%);
-      padding: 36px 20px 24px 20px;
-      color: #FFFFFF;
-    }
-    .check-wrap {
-      width: 68px;
-      height: 68px;
+    .expired-icon-wrap {
+      width: 80px;
+      height: 80px;
       border-radius: 50%;
-      background: rgba(255, 255, 255, 0.2);
+      background: #FEE2E2;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin: 0 auto 16px auto;
+      margin-bottom: 18px;
     }
-    .check-inner {
-      width: 50px;
-      height: 50px;
-      border-radius: 50%;
-      background: #FFFFFF;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .check-svg {
-      width: 28px;
-      height: 28px;
-      stroke: #059669;
-      stroke-width: 3.5;
-      fill: none;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-    .success-hero h2 {
+    .expired-title {
       font-size: 22px;
       font-weight: 800;
+      color: #DC2626;
+      margin-bottom: 6px;
     }
-    .success-hero p {
-      font-size: 13px;
-      opacity: 0.9;
-      margin-top: 4px;
+    .expired-subtitle {
+      font-size: 14px;
+      color: #64748B;
+      line-height: 1.5;
+      margin-bottom: 24px;
+      max-width: 320px;
     }
-    .success-content {
-      padding: 24px 20px;
-    }
-    .success-info-box {
+    .expired-info-box {
+      width: 100%;
       background: #F8FAFC;
       border: 1px solid #E2E8F0;
       border-radius: 16px;
       padding: 16px;
-      margin-bottom: 20px;
+      margin-bottom: 24px;
       text-align: left;
     }
-    .btn-return {
+    .expired-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      font-size: 13px;
+      color: #64748B;
+    }
+    .expired-val {
+      font-weight: 700;
+      color: #0F172A;
+    }
+    .btn-retry {
       width: 100%;
       background: #0E0720;
       color: #FFFFFF;
@@ -757,17 +772,166 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
       font-size: 15px;
       font-weight: 800;
       cursor: pointer;
+      margin-bottom: 12px;
+      transition: background 0.2s;
+    }
+    .btn-retry:active {
+      background: #1C1236;
+    }
+
+    /* Beautiful Celebration Success Screen */
+    .card-success {
+      display: none;
+      background: #FFFFFF;
+      width: 100%;
+      flex: 1;
+      border-radius: 28px 28px 0 0;
+      overflow: hidden;
+      text-align: center;
+      animation: popIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .card-success.active {
+      display: flex;
+      flex-direction: column;
+    }
+    .success-hero {
+      background: linear-gradient(180deg, #059669 0%, #10B981 100%);
+      padding: 40px 20px 28px 20px;
+      color: #FFFFFF;
+      position: relative;
+    }
+    .check-wrap {
+      width: 76px;
+      height: 76px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.22);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px auto;
+      box-shadow: 0 0 30px rgba(255, 255, 255, 0.4);
+      animation: bounce 0.6s ease;
+    }
+    .check-inner {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: #FFFFFF;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .check-svg {
+      width: 32px;
+      height: 32px;
+      stroke: #059669;
+      stroke-width: 4;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .success-hero h2 {
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: -0.3px;
+    }
+    .success-hero p {
+      font-size: 14px;
+      opacity: 0.95;
+      margin-top: 4px;
+    }
+    .success-content {
+      padding: 24px 20px 48px 20px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .receipt-box {
+      background: #F8FAFC;
+      border: 1.5px solid #E2E8F0;
+      border-radius: 18px;
+      padding: 20px 16px;
+      margin-bottom: 24px;
+      text-align: left;
+    }
+    .receipt-amt-box {
+      text-align: center;
+      padding-bottom: 16px;
+      border-bottom: 1px dashed #CBD5E1;
+      margin-bottom: 16px;
+    }
+    .receipt-label {
+      font-size: 13px;
+      color: #64748B;
+      font-weight: 600;
+    }
+    .receipt-amount {
+      font-size: 34px;
+      font-weight: 900;
+      color: #0F172A;
+      letter-spacing: -0.5px;
+      margin-top: 4px;
+    }
+    .receipt-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      font-size: 13.5px;
+      color: #64748B;
+    }
+    .receipt-val {
+      font-weight: 700;
+      color: #0F172A;
+    }
+    .receipt-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      background: #DCFCE7;
+      color: #166534;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .btn-return {
+      width: 100%;
+      background: #0E0720;
+      color: #FFFFFF;
+      border: none;
+      border-radius: 14px;
+      padding: 16px;
+      font-size: 16px;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
     }
     @keyframes popIn {
-      from { transform: scale(0.9); opacity: 0; }
+      from { transform: scale(0.95); opacity: 0; }
       to { transform: scale(1); opacity: 1; }
+    }
+    @keyframes pulse {
+      from { opacity: 0.8; }
+      to { opacity: 1; transform: scale(1.02); }
+    }
+    @keyframes bounce {
+      0% { transform: scale(0.3); opacity: 0; }
+      60% { transform: scale(1.15); opacity: 1; }
+      100% { transform: scale(1); }
     }
   </style>
 </head>
 <body>
 
   <div class="screen-container">
-    <!-- Top Header Navigation -->
+    <canvas id="confettiCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99; display: none;"></canvas>
+    <!-- Top Header Navigation with 10-Min Countdown Timer -->
     <div class="top-header">
       <button class="back-btn" onclick="handleBack()" aria-label="Back">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -778,9 +942,17 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
         <h1 class="header-title">Deposit</h1>
         <p class="header-subtitle">Add money to your wallet</p>
       </div>
+      <!-- Top Right Corner Expiry Timer -->
+      <div class="timer-badge" id="timerBadge" title="Order Expiry Countdown">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+        </svg>
+        <span id="timerText">10:00</span>
+      </div>
     </div>
 
-    <!-- Full-Width White Sheet -->
+    <!-- Active Full-Width Payment Sheet -->
     <div class="card-upi" id="paymentCard">
       <div class="bhim-row">
         <span class="bhim-brand">BHIM</span>
@@ -848,19 +1020,58 @@ depositPageRouter.get('/pay', async (req: Request, res: Response) => {
       <p class="verify-note">Payment will be credited automatically after verification</p>
     </div>
 
-    <!-- Success View -->
+    <!-- 10-Minute Expired Order View (Complete Page Replacement) -->
+    <div class="card-expired" id="expiredCard">
+      <div class="expired-icon-wrap">
+        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#DC2626" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12 6 12 12 16 14"></polyline>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+      </div>
+      <h2 class="expired-title">Deposit Order Expired</h2>
+      <p class="expired-subtitle">This payment session has timed out after 10 minutes. For security reasons, please do not pay on this QR.</p>
+      
+      <div class="expired-info-box">
+        <div class="expired-row"><span>Order ID</span><span class="expired-val" id="expOrderId">DEP-0000</span></div>
+        <div class="expired-row"><span>Amount</span><span class="expired-val" id="expAmount">₹${finalAmount.toFixed(2)}</span></div>
+        <div class="expired-row"><span>Session Status</span><span style="color: #DC2626; font-weight: 800;">EXPIRED</span></div>
+      </div>
+
+      <button class="btn-retry" onclick="restartDepositOrder()">CREATE NEW DEPOSIT ORDER</button>
+      <button class="btn-retry" style="background: #F1F5F9; color: #475569; border: 1px solid #CBD5E1;" onclick="handleBack()">CANCEL & RETURN</button>
+    </div>
+
+    <!-- Celebration Success Screen (Appears immediately when Admin approves) -->
     <div class="card-success" id="successCard">
       <div class="success-hero">
-        <div class="check-wrap"><div class="check-inner"><svg class="check-svg" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg></div></div>
-        <h2>Payment Successful!</h2><p>Funds added to your wallet</p>
+        <div class="check-wrap">
+          <div class="check-inner">
+            <svg class="check-svg" viewBox="0 0 24 24">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          </div>
+        </div>
+        <h2>Deposit Approved!</h2>
+        <p>Funds successfully credited to your wallet</p>
       </div>
       <div class="success-content">
-        <div class="success-info-box">
-          <div style="font-size: 13px; color: #64748B; margin-bottom: 4px;">Amount Added</div>
-          <div style="font-size: 26px; font-weight: 800; color: #0F172A;" id="successAmountText">₹${finalAmount.toFixed(2)}</div>
-          <div style="font-size: 12px; color: #94A3B8; margin-top: 8px;" id="successOrderIdText">Order ID: ...</div>
+        <div class="receipt-box">
+          <div class="receipt-amt-box">
+            <div class="receipt-label">Amount Credited</div>
+            <div class="receipt-amount" id="successAmountText">₹${finalAmount.toFixed(2)}</div>
+            <div style="margin-top: 6px;"><span class="receipt-badge">✓ Verified & Approved</span></div>
+          </div>
+          <div class="receipt-row"><span>Order ID</span><span class="receipt-val" id="successOrderIdText">DEP-000</span></div>
+          <div class="receipt-row"><span>Payment Mode</span><span class="receipt-val">UPI Instant Deposit</span></div>
+          <div class="receipt-row"><span>Status</span><span class="receipt-val" style="color: #059669;">COMPLETED</span></div>
+          <div class="receipt-row"><span>Updated At</span><span class="receipt-val" id="successTimeText">Just now</span></div>
         </div>
-        <button class="btn-return" onclick="handleReturnToGame()">RETURN TO GAME</button>
+        <button class="btn-return" onclick="handleReturnToGame()">
+          <span>RETURN TO GAME</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+        </button>
       </div>
     </div>
   </div>
@@ -978,6 +1189,9 @@ function circ(q, n, c, options) {
     let merchantName = "${MERCHANT_NAME}";
     let userId = "${userId}";
     let pollInterval = null;
+    let timerInterval = null;
+    let secondsLeft = 600; // 10 minutes = 600 seconds
+    let isFinished = false;
 
     function formatCurrency(amt) { return '₹' + amt.toFixed(2); }
     function generateUpiUri(amt) {
@@ -989,12 +1203,10 @@ function circ(q, n, c, options) {
     }
 
     function renderCircularQr() {
+      if (isFinished) return;
       try {
         const upiUri = generateUpiUri(amount);
-        if (typeof qrcode === 'undefined') {
-          console.error('qrcode generator not available');
-          return;
-        }
+        if (typeof qrcode === 'undefined') return;
         const q = qrcode(0, 'H');
         q.addData(upiUri);
         q.make();
@@ -1013,7 +1225,6 @@ function circ(q, n, c, options) {
         const sub = document.getElementById('paySubText');
         if (sub) sub.innerText = 'Scan QR or pay to ' + merchantName;
       } catch (err) {
-        console.error('Circular QR Error, falling back to standard SVG:', err);
         try {
           const upiUri = generateUpiUri(amount);
           const q = qrcode(0, 'M');
@@ -1021,7 +1232,173 @@ function circ(q, n, c, options) {
           q.make();
           const box = document.getElementById('qrBox');
           if (box) box.innerHTML = q.createSvgTag({ scalable: true });
-        } catch (e2) {}
+        } catch (_) {}
+      }
+    }
+
+    /* 10-Minute Countdown Timer System */
+    function start10MinCountdown() {
+      const badge = document.getElementById('timerBadge');
+      const text = document.getElementById('timerText');
+
+      function updateTimerDisplay() {
+        if (secondsLeft <= 0) {
+          clearInterval(timerInterval);
+          text.innerText = '00:00';
+          badge.className = 'timer-badge warning';
+          triggerOrderExpired();
+          return;
+        }
+
+        const mins = Math.floor(secondsLeft / 60);
+        const secs = secondsLeft % 60;
+        text.innerText = (mins < 10 ? '0' : '') + mins + ':' + (secs < 10 ? '0' : '') + secs;
+
+        if (secondsLeft <= 120) {
+          badge.className = 'timer-badge warning';
+        }
+        secondsLeft--;
+      }
+
+      updateTimerDisplay();
+      timerInterval = setInterval(updateTimerDisplay, 1000);
+    }
+
+    /* Complete Order Expired Screen Trigger */
+    function triggerOrderExpired() {
+      if (isFinished) return;
+      isFinished = true;
+      if (pollInterval) clearInterval(pollInterval);
+
+      document.getElementById('paymentCard').style.display = 'none';
+      document.getElementById('successCard').style.display = 'none';
+      const exp = document.getElementById('expiredCard');
+      exp.className = 'card-expired active';
+      document.getElementById('expOrderId').innerText = orderId;
+      document.getElementById('expAmount').innerText = formatCurrency(amount);
+
+      const headerTitle = document.querySelector('.header-title');
+      if (headerTitle) headerTitle.innerText = 'Deposit Expired';
+      const headerSub = document.querySelector('.header-subtitle');
+      if (headerSub) headerSub.innerText = 'Session timed out after 10m';
+      const timerText = document.getElementById('timerText');
+      if (timerText) timerText.innerText = 'EXPIRED';
+      const timerBadge = document.getElementById('timerBadge');
+      if (timerBadge) {
+        timerBadge.className = 'timer-badge warning';
+        timerBadge.style.background = '#DC2626';
+        timerBadge.style.borderColor = '#EF4444';
+        timerBadge.style.color = '#FFFFFF';
+      }
+    }
+
+    function restartDepositOrder() {
+      window.location.reload();
+    }
+
+    /* Continuous Polling for Admin Approval */
+    function startAdminApprovalPolling() {
+      if (pollInterval) return;
+
+      async function pollCheck() {
+        if (isFinished) return;
+        try {
+          const res = await fetch('/api/v1/deposits/status?depositId=' + encodeURIComponent(orderId) + '&orderId=' + encodeURIComponent(orderId));
+          const data = await res.json();
+          if (data && data.success && data.data) {
+            const st = (data.data.status || '').toUpperCase();
+            if (st === 'APPROVED' || st === 'COMPLETED' || st === 'SUCCESS') {
+              showSuccess(data.data);
+            }
+          }
+        } catch (_) {}
+      }
+
+      pollInterval = setInterval(pollCheck, 2500);
+      pollCheck();
+    }
+
+    function launchConfetti() {
+      const canvas = document.getElementById('confettiCanvas');
+      if (!canvas) return;
+      canvas.style.display = 'block';
+      canvas.width = canvas.offsetWidth || 480;
+      canvas.height = canvas.offsetHeight || 800;
+      const ctx = canvas.getContext('2d');
+      const pieces = [];
+      const colors = ['#10B981', '#34D399', '#F59E0B', '#3B82F6', '#EC4899', '#8B5CF6', '#FFFFFF'];
+      for (let i = 0; i < 90; i++) {
+        pieces.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * -canvas.height * 0.5,
+          size: Math.random() * 8 + 4,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          vx: (Math.random() - 0.5) * 3,
+          vy: Math.random() * 4 + 2.5,
+          rot: Math.random() * 360,
+          vrot: (Math.random() - 0.5) * 8
+        });
+      }
+      const start = Date.now();
+      function render() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        for (let p of pieces) {
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate((p.rot * Math.PI) / 180);
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+          ctx.restore();
+          p.x += p.vx;
+          p.y += p.vy;
+          p.rot += p.vrot;
+          if (p.y > canvas.height) {
+            p.y = -10;
+            p.x = Math.random() * canvas.width;
+          }
+        }
+        if (Date.now() - start < 8000) {
+          requestAnimationFrame(render);
+        } else {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          canvas.style.display = 'none';
+        }
+      }
+      render();
+    }
+
+    function showSuccess(orderData) {
+      if (isFinished) return;
+      isFinished = true;
+      if (timerInterval) clearInterval(timerInterval);
+      if (pollInterval) clearInterval(pollInterval);
+
+      document.getElementById('paymentCard').style.display = 'none';
+      document.getElementById('expiredCard').style.display = 'none';
+
+      const succ = document.getElementById('successCard');
+      succ.className = 'card-success active';
+      document.getElementById('successAmountText').innerText = formatCurrency(orderData?.amountRupees || amount);
+      document.getElementById('successOrderIdText').innerText = orderData?.depositId || orderId;
+      document.getElementById('successTimeText').innerText = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      // Update header
+      const headerTitle = document.querySelector('.header-title');
+      if (headerTitle) headerTitle.innerText = 'Deposit Successful';
+      const headerSub = document.querySelector('.header-subtitle');
+      if (headerSub) headerSub.innerText = 'Payment received & approved';
+      const timerBadge = document.getElementById('timerBadge');
+      if (timerBadge) timerBadge.style.display = 'none';
+
+      // Launch celebration confetti
+      launchConfetti();
+
+      // Synchronize in-app wallet balance if running inside WebView
+      if (window.AndroidBridge && window.AndroidBridge.syncWalletBalance) {
+        try {
+          const paise = Math.round((orderData?.amountRupees || amount) * 100);
+          window.AndroidBridge.syncWalletBalance(paise);
+        } catch (_) {}
       }
     }
 
@@ -1088,48 +1465,24 @@ function circ(q, n, c, options) {
         });
 
         const data = await res.json();
-        if (data.success) {
-          showSuccess();
+        if (data && data.success) {
+          showAlert('UTR Submitted! Verifying approval with Admin...', false);
         } else {
-          showAlert(data.message || 'Payment submitted! Verifying in background...', false);
-          startPolling();
+          showAlert(data.message || 'Payment submitted! Verifying...', false);
         }
       } catch (err) {
-        showAlert('UTR Submitted! Verification is in progress.', false);
-        startPolling();
+        showAlert('UTR Submitted! Verifying approval with Admin...', false);
       } finally {
         btn.disabled = false;
         btn.innerHTML = '<span>SUBMIT PAYMENT</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>';
       }
     }
 
-    function showSuccess() {
-      if (pollInterval) clearInterval(pollInterval);
-      document.getElementById('paymentCard').style.display = 'none';
-      const succ = document.getElementById('successCard');
-      succ.className = 'card-success active';
-      document.getElementById('successAmountText').innerText = formatCurrency(amount);
-      document.getElementById('successOrderIdText').innerText = 'Order ID: ' + orderId;
-
-      if (window.AndroidBridge && window.AndroidBridge.syncWalletBalance) {
-        try { window.AndroidBridge.syncWalletBalance(Math.round(amount * 100)); } catch (_) {}
-      }
-    }
-
-    function startPolling() {
-      if (pollInterval) return;
-      pollInterval = setInterval(async () => {
-        try {
-          const res = await fetch('/api/v1/deposits/' + encodeURIComponent(orderId) + '/status');
-          const data = await res.json();
-          if (data.success && (data.data?.status === 'COMPLETED' || data.data?.status === 'SUCCESS')) {
-            showSuccess();
-          }
-        } catch (_) {}
-      }, 3000);
-    }
-
+    // Initialize systems
     renderCircularQr();
+    start10MinCountdown();
+    startAdminApprovalPolling();
+
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', renderCircularQr);
     }
