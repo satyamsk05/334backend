@@ -1251,8 +1251,24 @@ function circ(q, n, c, options) {
     let userId = "${userId}";
     let pollInterval = null;
     let timerInterval = null;
-    let secondsLeft = 600; // 10 minutes = 600 seconds
     let isFinished = false;
+
+    // Order Countdown Persistence: lock expiry timestamp across page refreshes
+    const expiryKey = 'dep_expiry_' + orderId;
+    let expiryTimestamp = 0;
+    const createdAtParam = parseInt(urlParams.get('createdAt') || '0', 10);
+    if (createdAtParam > 0) {
+      expiryTimestamp = createdAtParam + 600 * 1000;
+      localStorage.setItem(expiryKey, expiryTimestamp.toString());
+    } else {
+      const savedExp = parseInt(localStorage.getItem(expiryKey) || '0', 10);
+      if (savedExp && !isNaN(savedExp) && savedExp > 0) {
+        expiryTimestamp = savedExp;
+      } else {
+        expiryTimestamp = Date.now() + 600 * 1000; // 10 minutes from first load
+        localStorage.setItem(expiryKey, expiryTimestamp.toString());
+      }
+    }
 
     function formatCurrency(amt) { return '₹' + amt.toFixed(2); }
     function generateUpiUri(amt) {
@@ -1297,28 +1313,30 @@ function circ(q, n, c, options) {
       }
     }
 
-    /* 10-Minute Countdown Timer System */
+    /* 10-Minute Countdown Timer System with Refresh Persistence */
     function start10MinCountdown() {
       const badge = document.getElementById('timerBadge');
       const text = document.getElementById('timerText');
 
       function updateTimerDisplay() {
-        if (secondsLeft <= 0) {
-          clearInterval(timerInterval);
+        const now = Date.now();
+        const diffSecs = Math.max(0, Math.floor((expiryTimestamp - now) / 1000));
+
+        if (diffSecs <= 0) {
+          if (timerInterval) clearInterval(timerInterval);
           text.innerText = '00:00';
           badge.className = 'timer-badge warning';
           triggerOrderExpired();
           return;
         }
 
-        const mins = Math.floor(secondsLeft / 60);
-        const secs = secondsLeft % 60;
+        const mins = Math.floor(diffSecs / 60);
+        const secs = diffSecs % 60;
         text.innerText = (mins < 10 ? '0' : '') + mins + ':' + (secs < 10 ? '0' : '') + secs;
 
-        if (secondsLeft <= 120) {
+        if (diffSecs <= 120) {
           badge.className = 'timer-badge warning';
         }
-        secondsLeft--;
       }
 
       updateTimerDisplay();
@@ -1354,6 +1372,7 @@ function circ(q, n, c, options) {
     }
 
     function restartDepositOrder() {
+      localStorage.removeItem(expiryKey);
       window.location.reload();
     }
 
